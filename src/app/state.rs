@@ -2,16 +2,22 @@ use crate::core::item::Item;
 
 pub struct AppState {
     pub query: String,
-    pub items: Vec<Item>,
+    pub all_items: Vec<Item>,
+    pub filtered_items: Vec<Item>,
     pub selected: usize,
 }
 
 impl AppState {
-    pub fn new() -> Self {
+    pub fn new(items: Vec<Item>) -> Self {
         Self {
             query: String::new(),
-            items: Vec::new(),
+            filtered_items: items.clone(),
+            all_items: items,
             selected: 0,
         }
+    }
+
+    pub fn reset_selection(&mut self) {
+        self.selected = 0;
     }
 }

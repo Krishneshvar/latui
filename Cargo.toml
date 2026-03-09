@@ -8,7 +8,7 @@ edition = "2024"
 ratatui = "0.30.0"
 crossterm = "0.29.0"
 
-nucleo = "0.5.0"
+nucleo-matcher = "0.3.1"
 
 serde = { version = "1.0.228", features = ["derive"] }
 toml = "1.0.6"

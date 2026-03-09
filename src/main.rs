@@ -3,13 +3,16 @@ mod core;
 mod matcher;
 mod ui;
 mod modes;
+mod cache;
+mod index;
 
 use std::io;
 
 use app::state::AppState;
-use core::{action::Action, item::Item};
 use matcher::fuzzy::FuzzyMatcher;
+use crate::index::trie::Trie;
 use modes::apps::load_apps;
+use crate::core::action::Action;
 
 use crossterm::{
     event::{self, Event, KeyCode},
@@ -103,17 +106,17 @@ fn update_results(app: &mut AppState, matcher: &mut FuzzyMatcher) {
         return;
     }
 
-    let titles: Vec<String> = app
+    let titles: Vec<&str> = app
         .all_items
         .iter()
-        .map(|i| i.title.clone())
+        .map(|i| i.search_text.as_str())
         .collect();
 
-    let matches = matcher.filter(&app.query, &titles);
+    let indexes = app.trie.search(&app.query.to_lowercase());
 
-    app.filtered_items = matches
+    app.filtered_items = indexes
         .iter()
-        .map(|(i, _)| app.all_items[*i].clone())
+        .map(|i| app.all_items[*i].clone())
         .collect();
 
     app.reset_selection();

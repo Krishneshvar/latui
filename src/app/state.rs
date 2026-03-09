@@ -1,15 +1,23 @@
 use crate::core::item::Item;
 use ratatui::widgets::ListState;
+use crate::index::trie::Trie;
 
 pub struct AppState {
     pub query: String,
     pub all_items: Vec<Item>,
     pub filtered_items: Vec<Item>,
     pub list_state: ListState,
+    pub trie: Trie,
 }
 
 impl AppState {
     pub fn new(items: Vec<Item>) -> Self {
+        let mut trie = Trie::new();
+
+        for (i, item) in items.iter().enumerate() {
+            trie.insert(&item.search_text, i);
+        }
+
         let mut list_state = ListState::default();
         list_state.select(Some(0));
 
@@ -18,6 +26,7 @@ impl AppState {
             filtered_items: items.clone(),
             all_items: items,
             list_state,
+            trie,
         }
     }
 

@@ -16,7 +16,7 @@ impl FuzzyMatcher {
         }
     }
 
-    pub fn filter(&mut self, query: &str, items: &[String]) -> Vec<(usize, i64)> {
+    pub fn filter(&mut self, query: &str, items: &[&str]) -> Vec<(usize, i64)> {
         let mut results: Vec<(usize, i64)> = Vec::new();
 
         if query.is_empty() {

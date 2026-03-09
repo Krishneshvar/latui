@@ -4,8 +4,23 @@ use walkdir::WalkDir;
 use freedesktop_desktop_entry::DesktopEntry;
 
 use crate::core::{action::Action, item::Item};
+use crate::cache::apps_cache::{load_cache, save_cache};
 
 pub fn load_apps() -> Vec<Item> {
+
+    if let Some(cached) = load_cache() {
+        return cached;
+    }
+
+    let items = build_apps_index();
+
+    save_cache(&items);
+
+    items
+}
+
+pub fn build_apps_index() -> Vec<Item> {
+
     let mut items = Vec::new();
 
     let dirs = vec![
@@ -20,6 +35,7 @@ pub fn load_apps() -> Vec<Item> {
     all_dirs.push(PathBuf::from(user_dir));
 
     for dir in all_dirs {
+
         if !dir.exists() {
             continue;
         }
@@ -32,15 +48,21 @@ pub fn load_apps() -> Vec<Item> {
 
             if path.extension().map(|e| e == "desktop").unwrap_or(false) {
 
-                if let Ok(entry) = DesktopEntry::from_path(path) {
+                if let Ok(entry) = DesktopEntry::from_path(path, None::<&[&str]>) {
 
                     if entry.no_display() {
                         continue;
                     }
 
-                    let name = entry.name(None).unwrap_or("").to_string();
+                    let name = entry
+                        .name::<&str>(&[])
+                        .map(|n| n.to_string())
+                        .unwrap_or_default();
 
-                    let exec = entry.exec().unwrap_or("").to_string();
+                    let exec = entry
+                        .exec()
+                        .map(|e| e.to_string())
+                        .unwrap_or_default();
 
                     if name.is_empty() || exec.is_empty() {
                         continue;
@@ -50,9 +72,9 @@ pub fn load_apps() -> Vec<Item> {
 
                     items.push(Item {
                         id: path.to_string_lossy().to_string(),
-                        title: name,
+                        title: name.clone(),
+                        search_text: name.to_lowercase(),
                         description: None,
-                        score: 0,
                         action: Action::Launch(exec),
                     });
                 }
@@ -64,6 +86,7 @@ pub fn load_apps() -> Vec<Item> {
 }
 
 fn sanitize_exec(exec: &str) -> String {
+
     exec.split_whitespace()
         .filter(|part| !part.starts_with('%'))
         .collect::<Vec<_>>()

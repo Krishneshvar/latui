@@ -6,7 +6,7 @@ use ratatui::{
 
 use crate::app::state::AppState;
 
-pub fn draw(frame: &mut Frame, app: &AppState) {
+pub fn draw(frame: &mut Frame, app: &mut AppState) {
     let size = frame.area();
 
     let layout = Layout::default()
@@ -25,17 +25,12 @@ pub fn draw(frame: &mut Frame, app: &AppState) {
     let items: Vec<ListItem> = app
         .filtered_items
         .iter()
-        .enumerate()
-        .map(|(i, item)| {
-            if i == app.selected {
-                ListItem::new(format!("> {}", item.title))
-            } else {
-                ListItem::new(item.title.clone())
-            }
-        })
+        .map(|i| ListItem::new(i.title.clone()))
         .collect();
 
-    let list = List::new(items).block(Block::default().borders(Borders::ALL));
+    let list = List::new(items)
+        .block(Block::default().borders(Borders::ALL))
+        .highlight_symbol(">> ");
 
-    frame.render_widget(list, layout[1]);
+    frame.render_stateful_widget(list, layout[1], &mut app.list_state);
 }

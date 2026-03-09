@@ -40,7 +40,7 @@ fn main() -> anyhow::Result<()> {
     let mut matcher = FuzzyMatcher::new();
 
     loop {
-        terminal.draw(|f| ui::renderer::draw(f, &app))?;
+        terminal.draw(|f| ui::renderer::draw(f, &mut app))?;
 
         if let Event::Key(key) = event::read()? {
             match key.code {
@@ -55,21 +55,19 @@ fn main() -> anyhow::Result<()> {
                 }
 
                 KeyCode::Down => {
-                    if app.selected + 1 < app.filtered_items.len() {
-                        app.selected += 1;
-                    }
+                    app.next();
                 }
 
                 KeyCode::Up => {
-                    if app.selected > 0 {
-                        app.selected -= 1;
-                    }
+                    app.previous();
                 }
 
                 KeyCode::Enter => {
-                    if let Some(item) = app.filtered_items.get(app.selected) {
-                        println!("Selected: {}", item.title);
-                        break;
+                    if let Some(i) = app.list_state.selected() {
+                        if let Some(item) = app.filtered_items.get(i) {
+                            println!("Selected: {}", item.title);
+                            break;
+                        }
                     }
                 }
 
@@ -106,5 +104,5 @@ fn update_results(app: &mut AppState, matcher: &mut FuzzyMatcher) {
         .map(|(i, _)| app.all_items[*i].clone())
         .collect();
 
-    app.selected = 0;
+    app.reset_selection();
 }

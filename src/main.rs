@@ -2,12 +2,14 @@ mod app;
 mod core;
 mod matcher;
 mod ui;
+mod modes;
 
 use std::io;
 
 use app::state::AppState;
 use core::{action::Action, item::Item};
 use matcher::fuzzy::FuzzyMatcher;
+use modes::apps::load_apps;
 
 use crossterm::{
     event::{self, Event, KeyCode},
@@ -29,12 +31,7 @@ fn main() -> anyhow::Result<()> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let items = vec![
-        Item { id: "1".into(), title: "firefox".into(), description: None, score: 0, action: Action::None },
-        Item { id: "2".into(), title: "fish".into(), description: None, score: 0, action: Action::None },
-        Item { id: "3".into(), title: "files".into(), description: None, score: 0, action: Action::None },
-        Item { id: "4".into(), title: "foot".into(), description: None, score: 0, action: Action::None },
-    ];
+    let items = load_apps();
 
     let mut app = AppState::new(items);
     let mut matcher = FuzzyMatcher::new();
@@ -65,8 +62,23 @@ fn main() -> anyhow::Result<()> {
                 KeyCode::Enter => {
                     if let Some(i) = app.list_state.selected() {
                         if let Some(item) = app.filtered_items.get(i) {
-                            println!("Selected: {}", item.title);
-                            break;
+                            match &item.action {
+                                Action::Launch(cmd) => {
+                                    std::process::Command::new("sh")
+                                        .arg("-c")
+                                        .arg(cmd)
+                                        .spawn()
+                                        .ok();
+                                }
+
+                                Action::Command(cmd) => {
+                                    std::process::Command::new("sh")
+                                        .arg("-c")
+                                        .arg(cmd)
+                                        .spawn()
+                                        .ok();
+                                }
+                            }
                         }
                     }
                 }

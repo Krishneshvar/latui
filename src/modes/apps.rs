@@ -1,7 +1,7 @@
-use std::fs;
 use std::path::PathBuf;
 
 use walkdir::WalkDir;
+use freedesktop_desktop_entry::DesktopEntry;
 
 use crate::core::{action::Action, item::Item};
 
@@ -31,54 +31,36 @@ pub fn load_apps() -> Vec<Item> {
             let path = entry.path();
 
             if path.extension().map(|e| e == "desktop").unwrap_or(false) {
-                if let Some(item) = parse_desktop_file(path) {
-                    items.push(item);
+
+                if let Ok(entry) = DesktopEntry::from_path(path) {
+
+                    if entry.no_display() {
+                        continue;
+                    }
+
+                    let name = entry.name(None).unwrap_or("").to_string();
+
+                    let exec = entry.exec().unwrap_or("").to_string();
+
+                    if name.is_empty() || exec.is_empty() {
+                        continue;
+                    }
+
+                    let exec = sanitize_exec(&exec);
+
+                    items.push(Item {
+                        id: path.to_string_lossy().to_string(),
+                        title: name,
+                        description: None,
+                        score: 0,
+                        action: Action::Launch(exec),
+                    });
                 }
             }
         }
     }
 
     items
-}
-
-fn parse_desktop_file(path: &std::path::Path) -> Option<Item> {
-    let content = fs::read_to_string(path).ok()?;
-
-    let mut name = None;
-    let mut exec = None;
-    let mut no_display = false;
-
-    for line in content.lines() {
-
-        if line.starts_with("Name=") && name.is_none() {
-            name = Some(line.trim_start_matches("Name=").to_string());
-        }
-
-        if line.starts_with("Exec=") && exec.is_none() {
-            exec = Some(line.trim_start_matches("Exec=").to_string());
-        }
-
-        if line.starts_with("NoDisplay=true") {
-            no_display = true;
-        }
-    }
-
-    if no_display {
-        return None;
-    }
-
-    let name = name?;
-    let exec = exec?;
-
-    let exec = sanitize_exec(&exec);
-
-    Some(Item {
-        id: path.to_string_lossy().to_string(),
-        title: name,
-        description: None,
-        score: 0,
-        action: Action::Launch(exec),
-    })
 }
 
 fn sanitize_exec(exec: &str) -> String {

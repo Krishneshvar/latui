@@ -4,11 +4,11 @@ mod ui;
 mod modes;
 mod cache;
 mod index;
+mod matcher;
 
 use std::io;
 
 use app::state::AppState;
-use crate::core::action::Action;
 use crate::core::mode::Mode;
 use crate::modes::apps::AppsMode;
 

@@ -1,5 +1,6 @@
 use crate::core::{action::Action, item::Item, mode::Mode};
 use crate::cache::apps_cache::{load_cache, save_cache};
+use crate::matcher::fuzzy::FuzzyMatcher;
 
 use freedesktop_desktop_entry::DesktopEntry;
 use walkdir::WalkDir;
@@ -108,17 +109,35 @@ impl Mode for AppsMode {
     }
 
     fn search(&self, query: &str) -> Vec<Item> {
-
         if query.is_empty() {
             return self.items.clone();
         }
 
         let q = query.to_lowercase();
 
-        self.items
+        // prefix filter first
+        let candidates: Vec<&Item> = self
+            .items
             .iter()
             .filter(|i| i.search_text.starts_with(&q))
-            .cloned()
+            .collect();
+
+        if candidates.is_empty() {
+            return Vec::new();
+        }
+
+        let texts: Vec<&str> = candidates
+            .iter()
+            .map(|i| i.search_text.as_str())
+            .collect();
+
+        let mut matcher = FuzzyMatcher::new();
+
+        let scores = matcher.filter(&q, &texts);
+
+        scores
+            .iter()
+            .map(|(i, _)| candidates[*i].clone())
             .collect()
     }
 

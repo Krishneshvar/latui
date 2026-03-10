@@ -1,6 +1,5 @@
 mod app;
 mod core;
-mod matcher;
 mod ui;
 mod modes;
 mod cache;
@@ -9,10 +8,9 @@ mod index;
 use std::io;
 
 use app::state::AppState;
-use matcher::fuzzy::FuzzyMatcher;
-use crate::index::trie::Trie;
-use modes::apps::load_apps;
 use crate::core::action::Action;
+use crate::core::mode::Mode;
+use crate::modes::apps::AppsMode;
 
 use crossterm::{
     event::{self, Event, KeyCode},
@@ -34,10 +32,11 @@ fn main() -> anyhow::Result<()> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let items = load_apps();
+    let mut mode = AppsMode::new();
+    mode.load();
 
-    let mut app = AppState::new(items);
-    let mut matcher = FuzzyMatcher::new();
+    let mut app = AppState::new(Vec::new());
+    app.filtered_items = mode.search("");
 
     loop {
         terminal.draw(|f| ui::renderer::draw(f, &mut app))?;
@@ -46,12 +45,12 @@ fn main() -> anyhow::Result<()> {
             match key.code {
                 KeyCode::Char(c) => {
                     app.query.push(c);
-                    update_results(&mut app, &mut matcher);
+                    update_results(&mut app, &mode);
                 }
 
                 KeyCode::Backspace => {
                     app.query.pop();
-                    update_results(&mut app, &mut matcher);
+                    update_results(&mut app, &mode);
                 }
 
                 KeyCode::Down => {
@@ -65,23 +64,7 @@ fn main() -> anyhow::Result<()> {
                 KeyCode::Enter => {
                     if let Some(i) = app.list_state.selected() {
                         if let Some(item) = app.filtered_items.get(i) {
-                            match &item.action {
-                                Action::Launch(cmd) => {
-                                    std::process::Command::new("sh")
-                                        .arg("-c")
-                                        .arg(cmd)
-                                        .spawn()
-                                        .ok();
-                                }
-
-                                Action::Command(cmd) => {
-                                    std::process::Command::new("sh")
-                                        .arg("-c")
-                                        .arg(cmd)
-                                        .spawn()
-                                        .ok();
-                                }
-                            }
+                            mode.execute(item);
                         }
                     }
                 }
@@ -100,24 +83,7 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn update_results(app: &mut AppState, matcher: &mut FuzzyMatcher) {
-    if app.query.is_empty() {
-        app.filtered_items = app.all_items.clone();
-        return;
-    }
-
-    let titles: Vec<&str> = app
-        .all_items
-        .iter()
-        .map(|i| i.search_text.as_str())
-        .collect();
-
-    let indexes = app.trie.search(&app.query.to_lowercase());
-
-    app.filtered_items = indexes
-        .iter()
-        .map(|i| app.all_items[*i].clone())
-        .collect();
-
+fn update_results(app: &mut AppState, mode: &impl Mode) {
+    app.filtered_items = mode.search(&app.query);
     app.reset_selection();
 }

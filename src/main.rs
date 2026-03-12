@@ -5,6 +5,9 @@ mod modes;
 mod cache;
 mod index;
 mod matcher;
+mod search;
+mod config;
+mod tracking;
 
 use std::io;
 

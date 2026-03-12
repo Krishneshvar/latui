@@ -1,0 +1,14 @@
+# Default Keyword Mappings for latui
+# These map common search terms to application categories
+
+[keywords]
+browser = ["firefox", "chrome", "brave", "chromium", "epiphany", "falkon", "qutebrowser", "midori"]
+editor = ["vim", "nvim", "neovim", "emacs", "code", "vscode", "gedit", "kate", "nano", "sublime", "atom"]
+terminal = ["alacritty", "kitty", "wezterm", "konsole", "gnome-terminal", "terminator", "tilix", "xterm", "urxvt"]
+files = ["thunar", "nautilus", "dolphin", "pcmanfm", "nemo", "ranger", "mc", "caja"]
+music = ["spotify", "rhythmbox", "clementine", "audacious", "lollypop", "deadbeef", "amarok"]
+video = ["vlc", "mpv", "celluloid", "totem", "dragon", "smplayer", "kodi"]
+email = ["thunderbird", "evolution", "geary", "mailspring", "kmail", "claws"]
+office = ["libreoffice", "onlyoffice", "calligra", "abiword", "gnumeric"]
+image = ["gimp", "inkscape", "krita", "darktable", "rawtherapee", "shotwell"]
+pdf = ["okular", "evince", "zathura", "mupdf", "xreader", "atril"]

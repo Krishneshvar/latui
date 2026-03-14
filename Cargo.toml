@@ -28,3 +28,6 @@ serde_json = "1.0.149"
 
 # Phase 1.2: Tokenization
 unicode-segmentation = "1.12"
+
+# Phase 2.3: Frequency & Recency Tracking
+rusqlite = { version = "0.32", features = ["bundled"] }

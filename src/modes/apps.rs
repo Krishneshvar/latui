@@ -2,6 +2,7 @@ use crate::core::{action::Action, item::Item, mode::Mode, searchable_item::Searc
 use crate::cache::apps_cache::{load_cache, save_cache};
 use crate::matcher::fuzzy::FuzzyMatcher;
 use crate::search::typo::TypoTolerance;
+use crate::tracking::frequency::FrequencyTracker;
 
 use freedesktop_desktop_entry::DesktopEntry;
 use walkdir::WalkDir;
@@ -12,14 +13,36 @@ use std::process::Command;
 pub struct AppsMode {
     items: Vec<SearchableItem>,
     typo_tolerance: TypoTolerance,
+    frequency_tracker: Option<FrequencyTracker>,
 }
 
 impl AppsMode {
 
     pub fn new() -> Self {
+        // Initialize frequency tracker
+        let frequency_tracker = Self::init_frequency_tracker();
+        
         Self {
             items: Vec::new(),
             typo_tolerance: TypoTolerance::new(),
+            frequency_tracker,
+        }
+    }
+    
+    /// Initialize frequency tracker with database
+    fn init_frequency_tracker() -> Option<FrequencyTracker> {
+        use xdg::BaseDirectories;
+        
+        let xdg = BaseDirectories::with_prefix("latui");
+        let db_path = xdg.place_data_file("usage.db").ok()?;
+        
+        FrequencyTracker::new(&db_path).ok()
+    }
+    
+    /// Record a query → app selection (called from main loop)
+    pub fn record_selection(&mut self, query: &str, item: &Item) {
+        if let Some(ref mut tracker) = self.frequency_tracker {
+            let _ = tracker.record_selection(query, &item.id);
         }
     }
     
@@ -235,7 +258,7 @@ impl Mode for AppsMode {
                         }
                     }
                     
-                    // Typo tolerance (NEW!)
+                    // Typo tolerance
                     if field_score == 0.0 {
                         // Check typo match against field text
                         if let Some(typo_score) = self.typo_tolerance.score(&q, &field_text) {
@@ -271,6 +294,23 @@ impl Mode for AppsMode {
                 best_score = best_score.max(weighted_score);
             }
 
+            // Add frequency and recency boosts (NEW!)
+            if let Some(ref tracker) = self.frequency_tracker {
+                let app_id = &searchable.item.id;
+                
+                // Frequency boost (0-100 points)
+                let frequency_boost = tracker.get_frequency_boost(app_id);
+                
+                // Recency boost (0-50 points)
+                let recency_boost = tracker.get_recency_boost(app_id);
+                
+                // Query-specific boost (0-50 points)
+                let query_boost = tracker.get_query_boost(&q, app_id);
+                
+                // Add all boosts to the score
+                best_score += frequency_boost + recency_boost + query_boost;
+            }
+
             if best_score > 0.0 {
                 scored_items.push((idx, best_score));
             }
@@ -286,12 +326,14 @@ impl Mode for AppsMode {
             .collect()
     }
 
-    fn execute(&self, item: &Item) {
+    fn execute(&mut self, item: &Item) {
+        // Record the launch in frequency tracker
+        if let Some(ref mut tracker) = self.frequency_tracker {
+            let _ = tracker.record_launch(&item.id);
+        }
 
         match &item.action {
-
             Action::Launch(cmd) | Action::Command(cmd) => {
-
                 Command::new("sh")
                     .arg("-c")
                     .arg(cmd)

@@ -8,5 +8,5 @@ pub trait Mode {
 
     fn search(&mut self, query: &str) -> Vec<Item>;
 
-    fn execute(&self, item: &Item);
+    fn execute(&mut self, item: &Item);
 }

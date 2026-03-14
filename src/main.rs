@@ -67,6 +67,9 @@ fn main() -> anyhow::Result<()> {
                 KeyCode::Enter => {
                     if let Some(i) = app.list_state.selected() {
                         if let Some(item) = app.filtered_items.get(i) {
+                            // Record the selection
+                            mode.record_selection(&app.query, item);
+                            // Execute the app
                             mode.execute(item);
                         }
                     }

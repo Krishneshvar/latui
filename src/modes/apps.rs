@@ -3,6 +3,7 @@ use crate::cache::apps_cache::{load_cache, save_cache};
 use crate::matcher::fuzzy::FuzzyMatcher;
 use crate::search::typo::TypoTolerance;
 use crate::tracking::frequency::FrequencyTracker;
+use crate::index::trie::MultiTokenTrie;
 
 use freedesktop_desktop_entry::DesktopEntry;
 use walkdir::WalkDir;
@@ -12,6 +13,7 @@ use std::process::Command;
 
 pub struct AppsMode {
     items: Vec<SearchableItem>,
+    trie: Option<MultiTokenTrie>,
     typo_tolerance: TypoTolerance,
     frequency_tracker: Option<FrequencyTracker>,
 }
@@ -24,6 +26,7 @@ impl AppsMode {
         
         Self {
             items: Vec::new(),
+            trie: None,
             typo_tolerance: TypoTolerance::new(),
             frequency_tracker,
         }
@@ -186,6 +189,8 @@ impl Mode for AppsMode {
 
         if let Some(cached) = load_cache() {
             self.items = cached;
+            // Build trie from cached items
+            self.trie = Some(MultiTokenTrie::build(&self.items));
             return;
         }
 
@@ -193,6 +198,8 @@ impl Mode for AppsMode {
 
         save_cache(&items);
 
+        // Build trie from items
+        self.trie = Some(MultiTokenTrie::build(&items));
         self.items = items;
     }
 
@@ -207,10 +214,31 @@ impl Mode for AppsMode {
         let q = query.to_lowercase();
         let query_tokens = tokenizer.tokenize(&q);
 
-        // Collect candidates with their scores
+        // Get candidate indices from trie (fast prefix filtering)
+        let candidate_indices = if let Some(ref trie) = self.trie {
+            if query_tokens.len() > 1 {
+                // For multi-token queries, use OR logic (any token matches)
+                // This gives us a broader set of candidates
+                trie.get_any_token_candidates(&query_tokens)
+            } else {
+                // For single token, just get candidates for the query
+                trie.get_candidates(&q)
+            }
+        } else {
+            // Fallback: search all items if trie not built
+            (0..self.items.len()).collect()
+        };
+
+        // If no candidates from trie, return empty
+        if candidate_indices.is_empty() {
+            return Vec::new();
+        }
+
+        // Collect candidates with their scores (only score trie candidates)
         let mut scored_items: Vec<(usize, f64)> = Vec::new();
 
-        for (idx, searchable) in self.items.iter().enumerate() {
+        for idx in candidate_indices {
+            let searchable = &self.items[idx];
             let mut best_score: f64 = 0.0;
 
             // Check acronym match first (high priority)
@@ -294,7 +322,7 @@ impl Mode for AppsMode {
                 best_score = best_score.max(weighted_score);
             }
 
-            // Add frequency and recency boosts (NEW!)
+            // Add frequency and recency boosts
             if let Some(ref tracker) = self.frequency_tracker {
                 let app_id = &searchable.item.id;
                 

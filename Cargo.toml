@@ -1,7 +1,13 @@
 [package]
 name = "latui"
-version = "0.1.0"
+version = "0.0.18"
+authors = ["Krishneshvar <krishjn07@gmail.com>"]
 edition = "2024"
+description = "A TUI-based multi-purpose launcher"
+repository = "https://github.com/Krishneshvar/latui"
+license = "GPL-3.0-only"
+keywords = ["launcher", "latui"]
+categories = ["command-line-utilities"]
 
 [dependencies]
 

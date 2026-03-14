@@ -6,7 +6,7 @@ pub trait Mode {
 
     fn load(&mut self);
 
-    fn search(&self, query: &str) -> Vec<Item>;
+    fn search(&mut self, query: &str) -> Vec<Item>;
 
     fn execute(&self, item: &Item);
 }

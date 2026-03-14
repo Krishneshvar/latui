@@ -1,6 +1,7 @@
 use crate::core::{action::Action, item::Item, mode::Mode, searchable_item::SearchableItem};
 use crate::cache::apps_cache::{load_cache, save_cache};
 use crate::matcher::fuzzy::FuzzyMatcher;
+use crate::search::typo::TypoTolerance;
 
 use freedesktop_desktop_entry::DesktopEntry;
 use walkdir::WalkDir;
@@ -10,6 +11,7 @@ use std::process::Command;
 
 pub struct AppsMode {
     items: Vec<SearchableItem>,
+    typo_tolerance: TypoTolerance,
 }
 
 impl AppsMode {
@@ -17,6 +19,7 @@ impl AppsMode {
     pub fn new() -> Self {
         Self {
             items: Vec::new(),
+            typo_tolerance: TypoTolerance::new(),
         }
     }
     
@@ -170,7 +173,7 @@ impl Mode for AppsMode {
         self.items = items;
     }
 
-    fn search(&self, query: &str) -> Vec<Item> {
+    fn search(&mut self, query: &str) -> Vec<Item> {
         if query.is_empty() {
             return self.items.iter().map(|s| s.item.clone()).collect();
         }
@@ -229,6 +232,22 @@ impl Mode for AppsMode {
                         });
                         if all_match {
                             field_score = 250.0;
+                        }
+                    }
+                    
+                    // Typo tolerance (NEW!)
+                    if field_score == 0.0 {
+                        // Check typo match against field text
+                        if let Some(typo_score) = self.typo_tolerance.score(&q, &field_text) {
+                            field_score = typo_score;
+                        }
+                        // Also check against individual tokens
+                        else {
+                            for token in &field.tokens {
+                                if let Some(typo_score) = self.typo_tolerance.score(&q, token) {
+                                    field_score = field_score.max(typo_score);
+                                }
+                            }
                         }
                     }
                     

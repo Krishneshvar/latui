@@ -48,12 +48,12 @@ fn main() -> anyhow::Result<()> {
             match key.code {
                 KeyCode::Char(c) => {
                     app.query.push(c);
-                    update_results(&mut app, &mode);
+                    update_results(&mut app, &mut mode);
                 }
 
                 KeyCode::Backspace => {
                     app.query.pop();
-                    update_results(&mut app, &mode);
+                    update_results(&mut app, &mut mode);
                 }
 
                 KeyCode::Down => {
@@ -86,7 +86,7 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn update_results(app: &mut AppState, mode: &impl Mode) {
+fn update_results(app: &mut AppState, mode: &mut impl Mode) {
     app.filtered_items = mode.search(&app.query);
     app.reset_selection();
 }

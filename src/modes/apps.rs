@@ -19,6 +19,21 @@ impl AppsMode {
             items: Vec::new(),
         }
     }
+    
+    /// Score acronym matches
+    fn score_acronym_match(&self, query: &str, item: &SearchableItem) -> f64 {
+        // Check if query matches any acronym
+        for acronym in &item.acronyms {
+            if acronym == query {
+                // Exact acronym match gets high score with name field weight
+                return 250.0 * 10.0; // 2500.0
+            } else if acronym.starts_with(query) {
+                // Prefix acronym match
+                return 200.0 * 10.0; // 2000.0
+            }
+        }
+        0.0
+    }
 
     fn build_index() -> Vec<SearchableItem> {
 
@@ -160,13 +175,21 @@ impl Mode for AppsMode {
             return self.items.iter().map(|s| s.item.clone()).collect();
         }
 
+        use crate::search::tokenizer::Tokenizer;
+        
+        let tokenizer = Tokenizer::new();
         let q = query.to_lowercase();
+        let query_tokens = tokenizer.tokenize(&q);
 
         // Collect candidates with their scores
         let mut scored_items: Vec<(usize, f64)> = Vec::new();
 
         for (idx, searchable) in self.items.iter().enumerate() {
             let mut best_score: f64 = 0.0;
+
+            // Check acronym match first (high priority)
+            let acronym_score = self.score_acronym_match(&q, searchable);
+            best_score = best_score.max(acronym_score);
 
             // Get all weighted fields
             let fields = searchable.get_weighted_fields();
@@ -184,20 +207,43 @@ impl Mode for AppsMode {
                 else if field_text.starts_with(&q) {
                     field_score = 500.0;
                 }
-                // Word boundary match
-                else if field_text.split_whitespace().any(|word| word.starts_with(&q)) {
-                    field_score = 300.0;
-                }
-                // Substring match
-                else if field_text.contains(&q) {
-                    field_score = 100.0;
-                }
-                // Fuzzy match as fallback
+                // Token-based matching
                 else {
-                    let mut matcher = FuzzyMatcher::new();
-                    let results = matcher.filter(&q, &[&field_text]);
-                    if let Some((_, score)) = results.first() {
-                        field_score = (*score as f64).min(200.0);
+                    // Check if query matches any token exactly
+                    let token_exact = field.tokens.iter().any(|t| t == &q);
+                    if token_exact {
+                        field_score = 400.0;
+                    }
+                    // Check if query is prefix of any token
+                    else if field.tokens.iter().any(|t| t.starts_with(&q)) {
+                        field_score = 350.0;
+                    }
+                    // Word boundary match
+                    else if field_text.split_whitespace().any(|word| word.starts_with(&q)) {
+                        field_score = 300.0;
+                    }
+                    // Multi-token match (all query tokens match)
+                    else if !query_tokens.is_empty() {
+                        let all_match = query_tokens.iter().all(|qt| {
+                            field.tokens.iter().any(|ft| ft.contains(qt))
+                        });
+                        if all_match {
+                            field_score = 250.0;
+                        }
+                    }
+                    
+                    // Substring match
+                    if field_score == 0.0 && field_text.contains(&q) {
+                        field_score = 100.0;
+                    }
+                    
+                    // Fuzzy match as fallback
+                    if field_score == 0.0 {
+                        let mut matcher = FuzzyMatcher::new();
+                        let results = matcher.filter(&q, &[&field_text]);
+                        if let Some((_, score)) = results.first() {
+                            field_score = (*score as f64).min(200.0);
+                        }
                     }
                 }
 

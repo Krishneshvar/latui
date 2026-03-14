@@ -1,4 +1,4 @@
-use crate::core::{action::Action, item::Item, mode::Mode};
+use crate::core::{action::Action, item::Item, mode::Mode, searchable_item::SearchableItem};
 use crate::cache::apps_cache::{load_cache, save_cache};
 use crate::matcher::fuzzy::FuzzyMatcher;
 
@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use std::process::Command;
 
 pub struct AppsMode {
-    items: Vec<Item>,
+    items: Vec<SearchableItem>,
 }
 
 impl AppsMode {
@@ -20,7 +20,7 @@ impl AppsMode {
         }
     }
 
-    fn build_index() -> Vec<Item> {
+    fn build_index() -> Vec<SearchableItem> {
 
         let mut items = Vec::new();
 
@@ -72,13 +72,60 @@ impl AppsMode {
 
                         let exec = sanitize_exec(&exec);
 
-                        items.push(Item {
+                        // Extract keywords from desktop entry
+                        let keywords: Vec<String> = entry
+                            .keywords::<&str>(&[])
+                            .map(|k| k.iter()
+                                .map(|s| s.to_lowercase())
+                                .collect())
+                            .unwrap_or_default();
+
+                        // Extract categories
+                        let categories: Vec<String> = entry
+                            .categories()
+                            .map(|cats| cats.iter()
+                                .map(|s| s.to_lowercase())
+                                .collect())
+                            .unwrap_or_default();
+
+                        // Extract generic name
+                        let generic_name = entry
+                            .generic_name::<&str>(&[])
+                            .map(|g| g.to_lowercase());
+
+                        // Extract comment/description
+                        let description = entry
+                            .comment::<&str>(&[])
+                            .map(|c| c.to_lowercase());
+
+                        // Extract executable name (first part of exec)
+                        let executable = exec
+                            .split_whitespace()
+                            .next()
+                            .unwrap_or(&exec)
+                            .to_lowercase();
+
+                        // Create the base Item
+                        let item = Item {
                             id: path.to_string_lossy().to_string(),
                             title: name.clone(),
                             search_text: name.to_lowercase(),
-                            description: None,
-                            action: Action::Launch(exec),
-                        });
+                            description: description.clone(),
+                            action: Action::Launch(exec.clone()),
+                        };
+
+                        // Create SearchableItem with all fields
+                        let searchable = SearchableItem::new(
+                            item,
+                            name.to_lowercase(),
+                            keywords,
+                            categories,
+                            generic_name,
+                            description,
+                            executable,
+                        );
+
+                        items.push(searchable);
                     }
                 }
             }
@@ -110,34 +157,67 @@ impl Mode for AppsMode {
 
     fn search(&self, query: &str) -> Vec<Item> {
         if query.is_empty() {
-            return self.items.clone();
+            return self.items.iter().map(|s| s.item.clone()).collect();
         }
 
         let q = query.to_lowercase();
 
-        // prefix filter first
-        let candidates: Vec<&Item> = self
-            .items
-            .iter()
-            .filter(|i| i.search_text.starts_with(&q))
-            .collect();
+        // Collect candidates with their scores
+        let mut scored_items: Vec<(usize, f64)> = Vec::new();
 
-        if candidates.is_empty() {
-            return Vec::new();
+        for (idx, searchable) in self.items.iter().enumerate() {
+            let mut best_score: f64 = 0.0;
+
+            // Get all weighted fields
+            let fields = searchable.get_weighted_fields();
+
+            // Score each field
+            for field in fields {
+                let field_text = field.text.to_lowercase();
+                let mut field_score = 0.0;
+
+                // Exact match (highest priority)
+                if field_text == q {
+                    field_score = 1000.0;
+                }
+                // Prefix match
+                else if field_text.starts_with(&q) {
+                    field_score = 500.0;
+                }
+                // Word boundary match
+                else if field_text.split_whitespace().any(|word| word.starts_with(&q)) {
+                    field_score = 300.0;
+                }
+                // Substring match
+                else if field_text.contains(&q) {
+                    field_score = 100.0;
+                }
+                // Fuzzy match as fallback
+                else {
+                    let mut matcher = FuzzyMatcher::new();
+                    let results = matcher.filter(&q, &[&field_text]);
+                    if let Some((_, score)) = results.first() {
+                        field_score = (*score as f64).min(200.0);
+                    }
+                }
+
+                // Apply field weight
+                let weighted_score = field_score * field.weight;
+                best_score = best_score.max(weighted_score);
+            }
+
+            if best_score > 0.0 {
+                scored_items.push((idx, best_score));
+            }
         }
 
-        let texts: Vec<&str> = candidates
+        // Sort by score (descending)
+        scored_items.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+
+        // Return items in sorted order
+        scored_items
             .iter()
-            .map(|i| i.search_text.as_str())
-            .collect();
-
-        let mut matcher = FuzzyMatcher::new();
-
-        let scores = matcher.filter(&q, &texts);
-
-        scores
-            .iter()
-            .map(|(i, _)| candidates[*i].clone())
+            .map(|(idx, _)| self.items[*idx].item.clone())
             .collect()
     }
 

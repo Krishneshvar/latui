@@ -3,11 +3,11 @@ use std::path::PathBuf;
 
 use serde::{Serialize, Deserialize};
 
-use crate::core::item::Item;
+use crate::core::searchable_item::SearchableItem;
 
 #[derive(Serialize, Deserialize)]
 pub struct CachedApps {
-    pub apps: Vec<Item>,
+    pub apps: Vec<SearchableItem>,
 }
 
 use xdg::BaseDirectories;
@@ -18,7 +18,7 @@ pub fn cache_path() -> PathBuf {
         .expect("Failed to create cache path")
 }
 
-pub fn load_cache() -> Option<Vec<Item>> {
+pub fn load_cache() -> Option<Vec<SearchableItem>> {
     let path = cache_path();
 
     let data = fs::read_to_string(path).ok()?;
@@ -28,7 +28,7 @@ pub fn load_cache() -> Option<Vec<Item>> {
     Some(cache.apps)
 }
 
-pub fn save_cache(items: &[Item]) {
+pub fn save_cache(items: &[SearchableItem]) {
 
     let cache = CachedApps {
         apps: items.to_vec(),

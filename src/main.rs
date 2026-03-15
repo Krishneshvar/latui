@@ -92,8 +92,10 @@ fn run_app() -> anyhow::Result<()> {
         if let Event::Key(key) = event::read()? {
             match key.code {
                 KeyCode::Char(c) => {
-                    app.query.push(c);
-                    update_results(&mut app, &mut mode);
+                    if is_valid_query_char(c) && app.query.len() < 128 {
+                        app.query.push(c);
+                        update_results(&mut app, &mut mode);
+                    }
                 }
 
                 KeyCode::Backspace => {
@@ -130,6 +132,11 @@ fn run_app() -> anyhow::Result<()> {
 
     terminal.show_cursor()?;
     Ok(())
+}
+
+fn is_valid_query_char(c: char) -> bool {
+    // Only allow safe characters for search
+    c.is_alphanumeric() || c.is_whitespace() || "-_.$+!*'(),/".contains(c)
 }
 
 fn update_results(app: &mut AppState, mode: &mut impl Mode) {

@@ -38,11 +38,21 @@ impl SearchableItem {
         description: Option<String>,
         executable: String,
     ) -> Result<Self, crate::error::LatuiError> {
-        if name.trim().is_empty() {
-            return Err(crate::error::LatuiError::App("Name cannot be empty".to_string()));
+        if name.trim().is_empty() || name.len() > 256 {
+            return Err(crate::error::LatuiError::App("Invalid name length".to_string()));
         }
-        if executable.trim().is_empty() {
-            return Err(crate::error::LatuiError::App("Executable cannot be empty".to_string()));
+        if executable.trim().is_empty() || executable.len() > 1024 {
+            return Err(crate::error::LatuiError::App("Invalid executable length".to_string()));
+        }
+        if let Some(ref d) = description {
+            if d.len() > 2048 {
+                return Err(crate::error::LatuiError::App("Description too long".to_string()));
+            }
+        }
+        if let Some(ref gn) = generic_name {
+            if gn.len() > 256 {
+                return Err(crate::error::LatuiError::App("Generic name too long".to_string()));
+            }
         }
         use crate::search::tokenizer::Tokenizer;
         

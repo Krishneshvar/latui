@@ -9,6 +9,8 @@ pub enum DatabaseError {
     Sqlite(#[from] rusqlite::Error),
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
+    #[error("Validation error: {0}")]
+    ValidationError(String),
 }
 
 /// SQLite database for usage tracking
@@ -99,6 +101,9 @@ impl Database {
     /// Record an app launch
     #[instrument(skip(self))]
     pub fn record_launch(&mut self, app_id: &str) -> Result<(), DatabaseError> {
+        if app_id.is_empty() || app_id.len() > 1024 {
+            return Err(DatabaseError::ValidationError("Invalid app_id length".into()));
+        }
         let now = current_timestamp();
 
         let tx = self.conn.transaction()?;
@@ -119,6 +124,12 @@ impl Database {
     /// Record a query → app selection
     #[instrument(skip(self))]
     pub fn record_selection(&mut self, query: &str, app_id: &str) -> Result<(), DatabaseError> {
+        if app_id.is_empty() || app_id.len() > 1024 {
+            return Err(DatabaseError::ValidationError("Invalid app_id length".into()));
+        }
+        if query.len() > 256 {
+            return Err(DatabaseError::ValidationError("Query too long".into()));
+        }
         let now = current_timestamp();
 
         let tx = self.conn.transaction()?;

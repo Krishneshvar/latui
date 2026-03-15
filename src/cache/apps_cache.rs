@@ -24,6 +24,16 @@ pub fn cache_path() -> Result<PathBuf, CacheError> {
 pub fn load_cache() -> Result<Vec<SearchableItem>, CacheError> {
     let path = cache_path()?;
     debug!("Attempting to load index cache from {:?}", path);
+    
+    // Validation: Don't load massive cache files (> 10MB)
+    let metadata = fs::metadata(&path)?;
+    if metadata.len() > 10 * 1024 * 1024 {
+        return Err(CacheError::Io(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "Cache file too large",
+        )));
+    }
+
     let data = fs::read_to_string(&path)?;
     let cache: CachedApps = serde_json::from_str(&data)?;
     info!("Successfully loaded {} items from cache payload", cache.apps.len());

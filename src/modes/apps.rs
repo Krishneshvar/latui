@@ -103,11 +103,10 @@ impl AppsMode {
                 .into_iter()
                 .filter_map(Result::ok)
             {
-
                 let path = entry.path();
 
-                if path.extension().map(|e| e == "desktop").unwrap_or(false) {
-                    
+                // Validation: Only .desktop files, no symlinks (prevent symlink attacks)
+                if path.extension().map(|e| e == "desktop").unwrap_or(false) && !path.is_symlink() {
                     match DesktopEntry::from_path(path, None::<&[&str]>) {
                         Ok(entry) => {
                             if entry.no_display() {
@@ -236,8 +235,12 @@ impl Mode for AppsMode {
     }
 
     fn search(&mut self, query: &str) -> Vec<Item> {
-        if query.is_empty() {
-            return self.items.iter().map(|s| s.item.clone()).collect();
+        if query.is_empty() || query.len() > 128 {
+            return if query.is_empty() {
+                self.items.iter().map(|s| s.item.clone()).collect()
+            } else {
+                Vec::new()
+            };
         }
 
         use crate::search::tokenizer::Tokenizer;

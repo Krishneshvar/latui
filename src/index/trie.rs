@@ -53,14 +53,12 @@ impl Trie {
 /// Multi-token trie for efficient prefix filtering
 pub struct MultiTokenTrie {
     trie: Trie,
-    pub node_count: usize,
 }
 
 impl MultiTokenTrie {
     pub fn new() -> Self {
         Self {
             trie: Trie::new(),
-            node_count: 1, // root
         }
     }
 
@@ -189,32 +187,4 @@ impl MultiTokenTrie {
         result
     }
     
-    /// Get candidates using OR logic (any token matches)
-    /// Returns indices of items that match ANY query token
-    pub fn get_any_token_candidates(&self, tokens: &[String]) -> Vec<usize> {
-        if tokens.is_empty() {
-            return Vec::new();
-        }
-        
-        let mut candidates = FxHashSet::default();
-        
-        for token in tokens {
-            let token_candidates = self.get_candidates(token);
-            candidates.extend(token_candidates);
-        }
-        
-        candidates.into_iter().collect()
-    }
-
-    /// Recursively calculate the node count internal to this trie map (for structural health statistics)
-    pub fn calculate_node_count(&mut self) {
-        fn traverse(node: &TrieNode) -> usize {
-            let mut count = 1;
-            for child in node.children.values() {
-                count += traverse(child);
-            }
-            count
-        }
-        self.node_count = traverse(&self.trie.root);
-    }
 }

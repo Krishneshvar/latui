@@ -16,20 +16,30 @@ pub struct AppsMode {
     trie: Option<MultiTokenTrie>,
     typo_tolerance: TypoTolerance,
     frequency_tracker: Option<FrequencyTracker>,
+    keyword_mapper: crate::config::keywords::KeywordMapper,
+    fuzzy_matcher: FuzzyMatcher,
     last_action_time: Option<std::time::Instant>,
 }
 
 impl AppsMode {
-
     pub fn new() -> Self {
         // Initialize frequency tracker
-        let frequency_tracker = Self::init_frequency_tracker();
+        let mut frequency_tracker = Self::init_frequency_tracker();
+        
+        // Cleanup old stats (keep 30 days)
+        if let Some(ref mut tracker) = frequency_tracker {
+            if let Err(e) = tracker.cleanup(30) {
+                tracing::warn!("Failed to cleanup old usage data: {}", e);
+            }
+        }
         
         Self {
             items: Vec::new(),
             trie: None,
             typo_tolerance: TypoTolerance::new(),
             frequency_tracker,
+            keyword_mapper: Self::init_keyword_mapper(),
+            fuzzy_matcher: FuzzyMatcher::new(),
             last_action_time: None,
         }
     }
@@ -54,6 +64,35 @@ impl AppsMode {
                 None
             }
         }
+    }
+
+    fn init_keyword_mapper() -> crate::config::keywords::KeywordMapper {
+        use crate::config::keywords::KeywordMapper;
+        use crate::config::loader::load_user_config_path;
+        use std::fs;
+
+        let mapper = KeywordMapper::with_defaults();
+
+        if let Some(path) = load_user_config_path() {
+            match fs::read_to_string(&path) {
+                Ok(content) => {
+                    match KeywordMapper::from_toml(&content) {
+                        Ok(custom_mapper) => {
+                            // Merge custom mappings into defaults
+                            // For simplicity, we can just use the custom_mapper if it successfully parsed
+                            // or merge them if KeywordMapper supported merging.
+                            // Let's at least log it.
+                            tracing::info!("Loaded custom keywords from {:?}", path);
+                            return custom_mapper;
+                        }
+                        Err(e) => tracing::error!("Failed to parse keywords TOML: {}", e),
+                    }
+                }
+                Err(e) => tracing::error!("Failed to read keywords file: {}", e),
+            }
+        }
+
+        mapper
     }
     
     /// Record a query → app selection (called from main loop)
@@ -218,10 +257,6 @@ impl AppsMode {
 
 impl Mode for AppsMode {
 
-    fn name(&self) -> &str {
-        "apps"
-    }
-
     fn load(&mut self) {
         match load_cache() {
             Ok(cached) => {
@@ -252,7 +287,20 @@ impl Mode for AppsMode {
     fn search(&mut self, query: &str) -> Vec<Item> {
         if query.is_empty() || query.len() > 128 {
             return if query.is_empty() {
-                self.items.iter().map(|s| s.item.clone()).collect()
+                let mut scored_all: Vec<(usize, f64)> = self.items.iter().enumerate().map(|(idx, searchable)| {
+                    let mut score = 0.0;
+                    if let Some(ref tracker) = self.frequency_tracker {
+                        score += tracker.get_total_boost(&searchable.item.id);
+                    }
+                    (idx, score)
+                }).collect();
+
+                // Sort by score (descending)
+                scored_all.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+                
+                scored_all.into_iter()
+                    .map(|(idx, _)| self.items[idx].item.clone())
+                    .collect()
             } else {
                 Vec::new()
             };
@@ -266,11 +314,10 @@ impl Mode for AppsMode {
         let query_tokens = tokenizer.tokenize(&q);
 
         // Get candidate indices from trie (fast prefix filtering)
-        let candidate_indices = if let Some(ref trie) = self.trie {
+        let mut candidate_indices = if let Some(ref trie) = self.trie {
             if query_tokens.len() > 1 {
-                // For multi-token queries, use OR logic (any token matches)
-                // This gives us a broader set of candidates
-                trie.get_any_token_candidates(&query_tokens)
+                // For multi-token queries, use AND logic (all tokens must match a prefix)
+                trie.get_multi_token_candidates(&query_tokens)
             } else {
                 // For single token, just get candidates for the query
                 trie.get_candidates(&q)
@@ -279,6 +326,19 @@ impl Mode for AppsMode {
             // Fallback: search all items if trie not built
             (0..self.items.len()).collect()
         };
+
+        // Add candidates from keyword mappings (e.g., "browser" -> "firefox")
+        if let Some(mapped_apps) = self.keyword_mapper.get_matches(&q) {
+            for app_needle in mapped_apps {
+                for (idx, item) in self.items.iter().enumerate() {
+                    if item.name.to_lowercase().contains(app_needle) {
+                        if !candidate_indices.contains(&idx) {
+                            candidate_indices.push(idx);
+                        }
+                    }
+                }
+            }
+        }
 
         tracing::trace!("Search query '{}' yielded {} candidates", query, candidate_indices.len());
 
@@ -362,8 +422,7 @@ impl Mode for AppsMode {
                     
                     // Fuzzy match as fallback
                     if field_score == 0.0 {
-                        let mut matcher = FuzzyMatcher::new();
-                        let results = matcher.filter(&q, &[&field_text]);
+                        let results = self.fuzzy_matcher.filter(&q, &[&field_text]);
                         if let Some((_, score)) = results.first() {
                             field_score = (*score as f64).min(200.0);
                         }

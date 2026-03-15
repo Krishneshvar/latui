@@ -150,7 +150,6 @@ impl SearchableItem {
             text: Cow::Borrowed(&self.name),
             tokens: Cow::Borrowed(&self.name_tokens),
             weight: 10.0,
-            field_type: FieldType::Name,
         });
 
         // Keywords (weight: 8.0)
@@ -159,17 +158,15 @@ impl SearchableItem {
                 text: Cow::Borrowed(keyword),
                 tokens: Cow::Owned(vec![keyword.to_lowercase()]),
                 weight: 8.0,
-                field_type: FieldType::Keyword,
             });
         }
 
-        // Generic name (weight: 6.0)
+        // Generic name (weight: 7.0)
         if let Some(generic) = &self.generic_name {
             fields.push(SearchField {
                 text: Cow::Borrowed(generic),
                 tokens: Cow::Borrowed(&self.generic_name_tokens),
-                weight: 6.0,
-                field_type: FieldType::GenericName,
+                weight: 7.0,
             });
         }
 
@@ -179,7 +176,6 @@ impl SearchableItem {
                 text: Cow::Borrowed(category),
                 tokens: Cow::Owned(vec![category.to_lowercase()]),
                 weight: 5.0,
-                field_type: FieldType::Category,
             });
         }
 
@@ -189,7 +185,6 @@ impl SearchableItem {
                 text: Cow::Borrowed(desc),
                 tokens: Cow::Borrowed(&self.description_tokens),
                 weight: 3.0,
-                field_type: FieldType::Description,
             });
         }
 
@@ -198,7 +193,6 @@ impl SearchableItem {
             text: Cow::Borrowed(&self.executable),
             tokens: Cow::Borrowed(&self.executable_tokens),
             weight: 2.0,
-            field_type: FieldType::Executable,
         });
 
         fields
@@ -211,30 +205,6 @@ pub struct SearchField<'a> {
     pub text: std::borrow::Cow<'a, str>,
     pub tokens: std::borrow::Cow<'a, [String]>,
     pub weight: f64,
-    pub field_type: FieldType,
 }
 
-/// Type of search field
-#[derive(Clone, Debug, PartialEq)]
-pub enum FieldType {
-    Name,
-    Keyword,
-    GenericName,
-    Category,
-    Description,
-    Executable,
-}
 
-impl FieldType {
-    /// Get the display name of the field type
-    pub fn display_name(&self) -> &str {
-        match self {
-            FieldType::Name => "Name",
-            FieldType::Keyword => "Keyword",
-            FieldType::GenericName => "Generic Name",
-            FieldType::Category => "Category",
-            FieldType::Description => "Description",
-            FieldType::Executable => "Executable",
-        }
-    }
-}

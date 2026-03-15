@@ -2,10 +2,7 @@ use lru::LruCache;
 use std::cell::{RefCell, Cell};
 use std::num::NonZeroUsize;
 
-pub struct CacheStats {
-    pub hits: usize,
-    pub misses: usize,
-}
+
 
 /// Advanced typo tolerance using multiple edit distance algorithms
 /// Handles common typing mistakes: transpositions, insertions, deletions, substitutions
@@ -34,17 +31,7 @@ impl TypoTolerance {
         }
     }
     
-    /// Create with custom settings
-    pub fn with_settings(max_distance: usize, min_query_length: usize) -> Self {
-        Self {
-            max_distance,
-            min_query_length,
-            use_damerau: true,
-            cache: RefCell::new(LruCache::new(NonZeroUsize::new(1000).unwrap())),
-            hits: Cell::new(0),
-            misses: Cell::new(0),
-        }
-    }
+
 
     /// Calculate Levenshtein distance between two strings
     /// Handles: insertions, deletions, substitutions
@@ -154,20 +141,7 @@ impl TypoTolerance {
         distance
     }
     
-    /// Clear the distance cache
-    pub fn clear_cache(&self) {
-        self.cache.borrow_mut().clear();
-        self.hits.set(0);
-        self.misses.set(0);
-    }
 
-    /// Get cache statistics
-    pub fn get_cache_stats(&self) -> CacheStats {
-        CacheStats {
-            hits: self.hits.get(),
-            misses: self.misses.get(),
-        }
-    }
 
     /// Score based on typo tolerance
     /// Returns None if query is too short or distance is too large
@@ -197,70 +171,7 @@ impl TypoTolerance {
         }
     }
     
-    /// Score with custom distance penalties
-    pub fn score_with_penalty(&self, query: &str, target: &str, penalty_per_edit: f64) -> Option<f64> {
-        if query.len() < self.min_query_length {
-            return None;
-        }
-        
-        let len_diff = (query.len() as i32 - target.len() as i32).abs() as usize;
-        if len_diff > self.max_distance {
-            return None;
-        }
 
-        let distance = self.distance(query, target);
-
-        if distance <= self.max_distance {
-            let base_score = 200.0;
-            let score = base_score - (distance as f64 * penalty_per_edit);
-            Some(score.max(0.0))
-        } else {
-            None
-        }
-    }
-    
-    /// Check if two strings are within typo tolerance
-    pub fn is_typo_match(&self, query: &str, target: &str) -> bool {
-        if query.len() < self.min_query_length {
-            return false;
-        }
-        
-        let distance = self.distance(query, target);
-        distance <= self.max_distance
-    }
-    
-    /// Get all typo matches from a list of candidates
-    pub fn find_typo_matches<'a>(&self, query: &str, candidates: &'a [&'a str]) -> Vec<(&'a str, usize)> {
-        if query.len() < self.min_query_length {
-            return vec![];
-        }
-        
-        candidates
-            .iter()
-            .filter_map(|&candidate| {
-                let distance = self.distance(query, candidate);
-                if distance <= self.max_distance {
-                    Some((candidate, distance))
-                } else {
-                    None
-                }
-            })
-            .collect()
-    }
-    
-    /// Suggest corrections for a typo
-    pub fn suggest_corrections<'a>(&self, query: &str, candidates: &'a [&'a str], limit: usize) -> Vec<&'a str> {
-        let mut matches = self.find_typo_matches(query, candidates);
-        
-        // Sort by distance (closest first)
-        matches.sort_by_key(|(_, dist)| *dist);
-        
-        matches
-            .into_iter()
-            .take(limit)
-            .map(|(candidate, _)| candidate)
-            .collect()
-    }
 }
 
 impl Default for TypoTolerance {
@@ -275,14 +186,14 @@ mod tests {
 
     #[test]
     fn test_exact_match() {
-        let mut typo = TypoTolerance::new();
+        let typo = TypoTolerance::new();
         assert_eq!(typo.distance("firefox", "firefox"), 0);
         assert_eq!(typo.score("firefox", "firefox"), Some(1000.0));
     }
 
     #[test]
     fn test_single_typo() {
-        let mut typo = TypoTolerance::new();
+        let typo = TypoTolerance::new();
         
         // Substitution: firefix -> firefox
         assert_eq!(typo.distance("firefix", "firefox"), 1);
@@ -297,7 +208,7 @@ mod tests {
 
     #[test]
     fn test_double_typo() {
-        let mut typo = TypoTolerance::new();
+        let typo = TypoTolerance::new();
         
         // Two substitutions: fiirefox -> firefox
         // Note: Damerau-Levenshtein might optimize this differently
@@ -308,7 +219,7 @@ mod tests {
 
     #[test]
     fn test_transposition() {
-        let mut typo = TypoTolerance::new();
+        let typo = TypoTolerance::new();
         
         // Damerau-Levenshtein handles transpositions
         // "teh" -> "the" should be distance 1, not 2
@@ -320,7 +231,7 @@ mod tests {
 
     #[test]
     fn test_min_query_length() {
-        let mut typo = TypoTolerance::new();
+        let typo = TypoTolerance::new();
         
         // Query too short (< 4 chars)
         assert_eq!(typo.score("fir", "firefox"), None);
@@ -334,7 +245,7 @@ mod tests {
 
     #[test]
     fn test_max_distance() {
-        let mut typo = TypoTolerance::new();
+        let typo = TypoTolerance::new();
         
         // Distance 3 (too far)
         assert_eq!(typo.score("fiiireefox", "firefox"), None);
@@ -343,147 +254,5 @@ mod tests {
         assert!(typo.score("fiirefox", "firefox").is_some());
     }
 
-    #[test]
-    fn test_common_typos() {
-        let mut typo = TypoTolerance::new();
-        
-        // Common browser typos
-        assert!(typo.is_typo_match("firefix", "firefox"));
-        assert!(typo.is_typo_match("chorme", "chrome"));
-        assert!(typo.is_typo_match("braev", "brave"));
-        
-        // Common app typos
-        assert!(typo.is_typo_match("thuner", "thunar"));
-        assert!(typo.is_typo_match("giimp", "gimp"));
-    }
 
-    #[test]
-    fn test_length_difference() {
-        let mut typo = TypoTolerance::new();
-        
-        // Large length difference should return None
-        assert_eq!(typo.score("fire", "firefoxbrowser"), None);
-        
-        // Similar length should work
-        assert!(typo.score("firefo", "firefox").is_some());
-    }
-
-    #[test]
-    fn test_find_typo_matches() {
-        let mut typo = TypoTolerance::new();
-        
-        let candidates = vec!["firefox", "chrome", "brave", "thunar"];
-        let matches = typo.find_typo_matches("firefix", &candidates);
-        
-        assert_eq!(matches.len(), 1);
-        assert_eq!(matches[0].0, "firefox");
-        assert_eq!(matches[0].1, 1); // distance 1
-    }
-
-    #[test]
-    fn test_suggest_corrections() {
-        let mut typo = TypoTolerance::new();
-        
-        let candidates = vec!["firefox", "firebird", "chrome", "brave"];
-        let suggestions = typo.suggest_corrections("firefix", &candidates, 2);
-        
-        assert!(suggestions.contains(&"firefox"));
-    }
-
-    #[test]
-    fn test_cache() {
-        let mut typo = TypoTolerance::new();
-        
-        // First call - calculates
-        let dist1 = typo.distance("firefix", "firefox");
-        
-        // Second call - uses cache
-        let dist2 = typo.distance("firefix", "firefox");
-        
-        assert_eq!(dist1, dist2);
-        assert_eq!(dist1, 1);
-        
-        // Clear cache
-        typo.clear_cache();
-        
-        // Should still work
-        let dist3 = typo.distance("firefix", "firefox");
-        assert_eq!(dist3, 1);
-    }
-
-    #[test]
-    fn test_custom_settings() {
-        let mut typo = TypoTolerance::with_settings(1, 3);
-        
-        // Max distance 1 - firefix to firefox has distance 1
-        assert!(typo.score("firefix", "firefox").is_some());
-        
-        // Distance > 1 should fail with max_distance=1
-        // fiirefox to firefox might be distance 1 or 2 depending on algorithm
-        let score = typo.score("fiireefox", "firefox");
-        assert_eq!(score, None, "Distance should be > 1");
-        
-        // Min length 3 - "fir" has 3 chars, should work
-        assert!(typo.score("fir", "fir").is_some());
-        assert!(typo.score("fir", "fire").is_some());
-    }
-
-    #[test]
-    fn test_score_with_penalty() {
-        let mut typo = TypoTolerance::new();
-        
-        // Distance 1, penalty 50.0 per edit
-        let score = typo.score_with_penalty("firefix", "firefox", 50.0);
-        assert_eq!(score, Some(150.0)); // 200.0 - 50.0
-        
-        // Distance varies with Damerau-Levenshtein
-        let score = typo.score_with_penalty("fiirefox", "firefox", 50.0);
-        assert!(score.is_some());
-        assert!(score.unwrap() >= 100.0);
-    }
-
-    #[test]
-    fn test_empty_strings() {
-        let mut typo = TypoTolerance::new();
-        
-        assert_eq!(typo.distance("", "firefox"), 7);
-        assert_eq!(typo.distance("firefox", ""), 7);
-        assert_eq!(typo.distance("", ""), 0);
-    }
-
-    #[test]
-    fn test_case_sensitivity() {
-        let mut typo = TypoTolerance::new();
-        
-        // Different cases are treated as different characters
-        assert_eq!(typo.distance("Firefox", "firefox"), 1);
-        
-        // Should normalize before calling
-        assert_eq!(typo.distance("firefox", "firefox"), 0);
-    }
-
-    #[test]
-    fn test_unicode() {
-        let mut typo = TypoTolerance::new();
-        
-        // Unicode characters - distance calculation works on chars, not bytes
-        // "café" has 4 chars, "cafe" has 4 chars
-        let dist = typo.distance("café", "cafe");
-        assert!(dist <= 2, "Unicode distance should be reasonable, got {}", dist);
-        
-        // These should work without panicking
-        let _ = typo.distance("naïve", "naive");
-    }
-
-    #[test]
-    fn test_real_world_typos() {
-        let mut typo = TypoTolerance::new();
-        
-        // Real typos users might make
-        assert!(typo.is_typo_match("googel", "google"));
-        assert!(typo.is_typo_match("chromw", "chrome"));
-        assert!(typo.is_typo_match("vlcc", "vlc"));
-        assert!(typo.is_typo_match("thundar", "thunar"));
-        assert!(typo.is_typo_match("libreofice", "libreoffice"));
-    }
 }

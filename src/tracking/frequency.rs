@@ -1,4 +1,4 @@
-use crate::tracking::database::{Database, DatabaseError, UsageStats};
+use crate::tracking::database::{Database, DatabaseError};
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -22,11 +22,6 @@ impl FrequencyTracker {
     /// Record a query → app selection
     pub fn record_selection(&mut self, query: &str, app_id: &str) -> Result<(), DatabaseError> {
         self.db.record_selection(query, app_id)
-    }
-
-    /// Get usage stats for an app
-    pub fn get_stats(&self, app_id: &str) -> Result<Option<UsageStats>, DatabaseError> {
-        self.db.get_usage_stats(app_id)
     }
 
     /// Calculate frequency boost for an app
@@ -113,15 +108,7 @@ impl FrequencyTracker {
         }
     }
 
-    /// Get top apps by launch count
-    pub fn get_top_apps(&self, limit: usize) -> Vec<(String, u32)> {
-        self.db.get_top_apps(limit).unwrap_or_default()
-    }
 
-    /// Get recently used apps
-    pub fn get_recent_apps(&self, limit: usize) -> Vec<(String, u64)> {
-        self.db.get_recent_apps(limit).unwrap_or_default()
-    }
 
     /// Cleanup old data
     pub fn cleanup(&mut self, days_old: u64) -> Result<(), DatabaseError> {

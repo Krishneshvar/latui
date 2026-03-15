@@ -219,54 +219,7 @@ impl Database {
         Ok(())
     }
 
-    /// Get all apps sorted by launch count
-    pub fn get_top_apps(&self, limit: usize) -> Result<Vec<(String, u32)>, DatabaseError> {
-        let mut stmt = self
-            .conn
-            .prepare(
-                "SELECT app_id, launch_count
-                 FROM usage_stats
-                 ORDER BY launch_count DESC
-                 LIMIT ?1",
-            )?;
 
-        let rows = stmt
-            .query_map(rusqlite::params![limit as i64], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, u32>(1)?))
-            })?;
-
-        let mut results = Vec::new();
-        for row in rows {
-            results.push(row?);
-        }
-
-        Ok(results)
-    }
-
-    /// Get recently used apps
-    pub fn get_recent_apps(&self, limit: usize) -> Result<Vec<(String, u64)>, DatabaseError> {
-        let mut stmt = self
-            .conn
-            .prepare(
-                "SELECT app_id, last_used
-                 FROM usage_stats
-                 WHERE last_used > 0
-                 ORDER BY last_used DESC
-                 LIMIT ?1",
-            )?;
-
-        let rows = stmt
-            .query_map(rusqlite::params![limit as i64], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)? as u64))
-            })?;
-
-        let mut results = Vec::new();
-        for row in rows {
-            results.push(row?);
-        }
-
-        Ok(results)
-    }
 }
 
 /// Usage statistics for an app
@@ -332,26 +285,6 @@ mod tests {
         assert_eq!(stats.len(), 2);
         assert_eq!(stats[0].0, "brave");
         assert_eq!(stats[0].1, 2);
-
-        let _ = fs::remove_file(&path);
-    }
-
-    #[test]
-    fn test_top_apps() {
-        let path = temp_db_path();
-        let mut db = Database::new(&path).unwrap();
-
-        db.record_launch("firefox").unwrap();
-        db.record_launch("firefox").unwrap();
-        db.record_launch("firefox").unwrap();
-        db.record_launch("chrome").unwrap();
-        db.record_launch("chrome").unwrap();
-        db.record_launch("brave").unwrap();
-
-        let top = db.get_top_apps(3).unwrap();
-        assert_eq!(top.len(), 3);
-        assert_eq!(top[0].0, "firefox");
-        assert_eq!(top[0].1, 3);
 
         let _ = fs::remove_file(&path);
     }

@@ -149,23 +149,28 @@ mod tests {
     }
 
     #[test]
-    fn test_any_token_candidates() {
+    fn test_multi_token_and_candidates() {
         let items = vec![
-            create_test_item("Firefox", vec!["browser"], vec![]),
-            create_test_item("Chrome", vec!["browser"], vec![]),
-            create_test_item("Thunar", vec!["files"], vec![]),
+            create_test_item("Firefox Web Browser", vec!["browser"], vec![]),
+            create_test_item("Chrome Web Browser", vec!["browser"], vec![]),
+            create_test_item("Thunar File Manager", vec!["files"], vec![]),
         ];
 
         let trie = MultiTokenTrie::build(&items);
         
-        // Test OR logic: match any token
-        let tokens = vec!["fire".to_string(), "files".to_string()];
-        let candidates = trie.get_any_token_candidates(&tokens);
+        // Test AND logic: all tokens must match
+        let tokens = vec!["web".to_string(), "brow".to_string()];
+        let candidates = trie.get_multi_token_candidates(&tokens);
         
-        // Should match Firefox (fire) and Thunar (files)
+        // Should match Firefox (0) and Chrome (1)
         assert_eq!(candidates.len(), 2);
         assert!(candidates.contains(&0));
-        assert!(candidates.contains(&2));
+        assert!(candidates.contains(&1));
+
+        // Token that matches nothing
+        let tokens = vec!["web".to_string(), "files".to_string()];
+        let candidates = trie.get_multi_token_candidates(&tokens);
+        assert!(candidates.is_empty());
     }
 
     #[test]

@@ -1,6 +1,7 @@
 use rusqlite::Connection;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
+use tracing::{info, debug, trace, instrument};
 
 #[derive(Debug, thiserror::Error)]
 pub enum DatabaseError {
@@ -24,6 +25,7 @@ impl Database {
         }
 
         let conn = Connection::open(path)?;
+        debug!("SQLite database connection opened at {:?}", path);
 
         let mut db = Self { conn };
         db.init_schema()?;
@@ -31,6 +33,7 @@ impl Database {
     }
 
     /// Initialize database schema
+    #[instrument(skip(self))]
     pub fn init_schema(&mut self) -> Result<(), DatabaseError> {
         let tx = self.conn.transaction()?;
 
@@ -47,7 +50,10 @@ impl Database {
             |row| row.get(0),
         ).unwrap_or(0);
 
+        trace!("Current database schema version: {}", version);
+
         if version < 1 {
+            info!("Running schema migration from version {}", version);
             // Usage statistics table
             tx.execute(
                 "CREATE TABLE IF NOT EXISTS usage_stats (
@@ -86,10 +92,12 @@ impl Database {
         }
 
         tx.commit()?;
+        debug!("Database schema successfully initialized");
         Ok(())
     }
 
     /// Record an app launch
+    #[instrument(skip(self))]
     pub fn record_launch(&mut self, app_id: &str) -> Result<(), DatabaseError> {
         let now = current_timestamp();
 
@@ -103,11 +111,13 @@ impl Database {
             rusqlite::params![app_id, now as i64],
         )?;
         tx.commit()?;
+        debug!("Recorded launch tracking metric successfully for '{}'", app_id);
 
         Ok(())
     }
 
     /// Record a query → app selection
+    #[instrument(skip(self))]
     pub fn record_selection(&mut self, query: &str, app_id: &str) -> Result<(), DatabaseError> {
         let now = current_timestamp();
 
@@ -118,6 +128,7 @@ impl Database {
             rusqlite::params![query, app_id, now as i64],
         )?;
         tx.commit()?;
+        trace!("Recorded selection tracking dynamically query '{}' => app_id '{}'", query, app_id);
 
         Ok(())
     }
@@ -168,15 +179,19 @@ impl Database {
     }
 
     /// Clean old query selections (configurable retention in days)
+    #[instrument(skip(self))]
     pub fn cleanup_old_selections(&mut self, days_old: u64) -> Result<(), DatabaseError> {
         let expiration_time = current_timestamp() - (days_old * 24 * 3600);
+        info!("Executing database retention cleanup for items older than {} days", days_old);
 
         let tx = self.conn.transaction()?;
-        tx.execute(
+        let rows_deleted = tx.execute(
             "DELETE FROM query_selections WHERE timestamp < ?1",
             rusqlite::params![expiration_time as i64],
         )?;
         tx.commit()?;
+        
+        debug!("Database cleanup complete. {} old records purged.", rows_deleted);
 
         Ok(())
     }

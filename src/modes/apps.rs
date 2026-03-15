@@ -94,10 +94,10 @@ impl AppsMode {
         all_dirs.push(PathBuf::from(user_dir));
 
         for dir in all_dirs {
-
             if !dir.exists() {
                 continue;
             }
+            tracing::debug!("Scanning directory for desktop files: {:?}", dir);
 
             for entry in WalkDir::new(dir)
                 .into_iter()
@@ -242,6 +242,7 @@ impl Mode for AppsMode {
 
         use crate::search::tokenizer::Tokenizer;
         
+        let start = std::time::Instant::now();
         let tokenizer = Tokenizer::new();
         let q = query.to_lowercase();
         let query_tokens = tokenizer.tokenize(&q);
@@ -260,6 +261,8 @@ impl Mode for AppsMode {
             // Fallback: search all items if trie not built
             (0..self.items.len()).collect()
         };
+
+        tracing::trace!("Search query '{}' yielded {} candidates", query, candidate_indices.len());
 
         // If no candidates from trie, return empty
         if candidate_indices.is_empty() {
@@ -380,10 +383,13 @@ impl Mode for AppsMode {
         scored_items.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
         // Return items in sorted order
-        scored_items
+        let results: Vec<Item> = scored_items
             .iter()
             .map(|(idx, _)| self.items[*idx].item.clone())
-            .collect()
+            .collect();
+
+        tracing::trace!("Search for '{}' completed in {:?} with {} results", query, start.elapsed(), results.len());
+        results
     }
 
     fn execute(&mut self, item: &Item) {

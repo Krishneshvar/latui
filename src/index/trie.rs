@@ -1,6 +1,7 @@
 use rustc_hash::{FxHashMap, FxHashSet};
-use std::collections::BTreeMap;
 use crate::core::searchable_item::SearchableItem;
+use std::time::Instant;
+use tracing::{info, debug};
 
 pub const MAX_TRIE_WORD_LENGTH: usize = 32;
 
@@ -65,11 +66,15 @@ impl MultiTokenTrie {
 
     /// Build trie from searchable items
     pub fn build(items: &[SearchableItem]) -> Self {
+        debug!("Commencing MultiTokenTrie index building for {} items...", items.len());
+        let start_time = Instant::now();
         let mut trie = Self::new();
         
         for (idx, item) in items.iter().enumerate() {
             trie.insert_item(item, idx);
         }
+        
+        info!("Built MultiTokenTrie search index with {} items in {:?}", items.len(), start_time.elapsed());
         
         trie
     }

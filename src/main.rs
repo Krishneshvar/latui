@@ -11,7 +11,6 @@ mod tracking;
 pub mod error;
 
 use tracing::{info, error, debug, Level};
-use tracing_subscriber::fmt;
 use tracing_appender::rolling;
 use xdg::BaseDirectories;
 
@@ -24,7 +23,7 @@ use crate::modes::apps::AppsMode;
 use crossterm::{
     event::{self, Event, KeyCode},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 
 use ratatui::{
@@ -51,6 +50,26 @@ fn main() -> anyhow::Result<()> {
     let _guard = init_tracing().map_err(|e| anyhow::anyhow!("Failed to initialize logging: {}", e))?;
     info!("Starting Latui launcher...");
 
+    let res = run_app();
+
+    // Ensure raw mode is correctly disabled regardless of UI panics
+    if let Err(e) = crossterm::terminal::disable_raw_mode() {
+        error!("Failed to disable raw mode on exit: {}", e);
+    }
+    if let Err(e) = execute!(io::stdout(), LeaveAlternateScreen) {
+        error!("Failed to leave alternate screen: {}", e);
+    }
+
+    if let Err(err) = res {
+        error!("Fatal application error recorded: {:?}", err);
+        return Err(err);
+    }
+    
+    info!("Latui launcher successfully shut down.");
+    Ok(())
+}
+
+fn run_app() -> anyhow::Result<()> {
     enable_raw_mode()?;
 
     let mut stdout = io::stdout();
@@ -109,10 +128,7 @@ fn main() -> anyhow::Result<()> {
         }
     }
 
-    disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
     terminal.show_cursor()?;
-
     Ok(())
 }
 

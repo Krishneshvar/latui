@@ -12,6 +12,7 @@ pub struct CachedApps {
 
 use xdg::BaseDirectories;
 use crate::error::CacheError;
+use tracing::{info, debug, instrument};
 
 pub fn cache_path() -> Result<PathBuf, CacheError> {
     let xdg = BaseDirectories::with_prefix("latui");
@@ -19,19 +20,25 @@ pub fn cache_path() -> Result<PathBuf, CacheError> {
     Ok(path)
 }
 
+#[instrument]
 pub fn load_cache() -> Result<Vec<SearchableItem>, CacheError> {
     let path = cache_path()?;
-    let data = fs::read_to_string(path)?;
+    debug!("Attempting to load index cache from {:?}", path);
+    let data = fs::read_to_string(&path)?;
     let cache: CachedApps = serde_json::from_str(&data)?;
+    info!("Successfully loaded {} items from cache payload", cache.apps.len());
     Ok(cache.apps)
 }
 
+#[instrument(skip(items))]
 pub fn save_cache(items: &[SearchableItem]) -> Result<(), CacheError> {
+    debug!("Serializing {} items to disk cache...", items.len());
     let cache = CachedApps {
         apps: items.to_vec(),
     };
     let json = serde_json::to_string(&cache)?;
     let path = cache_path()?;
-    fs::write(path, json)?;
+    fs::write(&path, json)?;
+    debug!("Successfully flushed application state cache to {:?}", path);
     Ok(())
 }

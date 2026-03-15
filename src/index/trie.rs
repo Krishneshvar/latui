@@ -1,10 +1,13 @@
-use std::collections::{HashMap, HashSet};
+use rustc_hash::{FxHashMap, FxHashSet};
+use std::collections::BTreeMap;
 use crate::core::searchable_item::SearchableItem;
+
+pub const MAX_TRIE_WORD_LENGTH: usize = 32;
 
 #[derive(Default)]
 pub struct TrieNode {
-    pub children: HashMap<char, TrieNode>,
-    pub items: Vec<usize>,
+    pub children: FxHashMap<char, TrieNode>,
+    pub items: FxHashSet<usize>,
 }
 
 pub struct Trie {
@@ -19,11 +22,16 @@ impl Trie {
     }
 
     pub fn insert(&mut self, word: &str, index: usize) {
+        if word.len() > MAX_TRIE_WORD_LENGTH {
+            // Drop strings exceeding our sensible dimension limits to bound memory usage securely
+            return;
+        }
+
         let mut node = &mut self.root;
 
         for ch in word.chars() {
             node = node.children.entry(ch).or_default();
-            node.items.push(index);
+            node.items.insert(index);
         }
     }
 
@@ -37,19 +45,21 @@ impl Trie {
             }
         }
 
-        node.items.clone()
+        node.items.iter().copied().collect()
     }
 }
 
 /// Multi-token trie for efficient prefix filtering
 pub struct MultiTokenTrie {
     trie: Trie,
+    pub node_count: usize,
 }
 
 impl MultiTokenTrie {
     pub fn new() -> Self {
         Self {
             trie: Trie::new(),
+            node_count: 1, // root
         }
     }
 
@@ -130,7 +140,7 @@ impl MultiTokenTrie {
         let results = self.trie.search(query);
         
         // Remove duplicates while preserving order
-        let mut seen = HashSet::new();
+        let mut seen = FxHashSet::default();
         results.into_iter()
             .filter(|idx| seen.insert(*idx))
             .collect()
@@ -143,14 +153,19 @@ impl MultiTokenTrie {
             return Vec::new();
         }
         
+        // Optimize: Sort tokens by length (descending) assuming longer tokens are rarer
+        // This helps the intersection process reduce search space faster
+        let mut sorted_tokens: Vec<&String> = tokens.iter().collect();
+        sorted_tokens.sort_by(|a, b| b.len().cmp(&a.len()));
+        
         // Get candidates for first token
-        let mut candidates: HashSet<usize> = self.get_candidates(&tokens[0])
+        let mut candidates: FxHashSet<usize> = self.get_candidates(sorted_tokens[0])
             .into_iter()
             .collect();
         
         // Intersect with candidates from other tokens
-        for token in &tokens[1..] {
-            let token_candidates: HashSet<usize> = self.get_candidates(token)
+        for token in &sorted_tokens[1..] {
+            let token_candidates: FxHashSet<usize> = self.get_candidates(token)
                 .into_iter()
                 .collect();
             
@@ -164,7 +179,9 @@ impl MultiTokenTrie {
             }
         }
         
-        candidates.into_iter().collect()
+        let mut result: Vec<usize> = candidates.into_iter().collect();
+        result.sort_unstable(); // Preserve stable visual tracking post-intersection
+        result
     }
     
     /// Get candidates using OR logic (any token matches)
@@ -174,7 +191,7 @@ impl MultiTokenTrie {
             return Vec::new();
         }
         
-        let mut candidates = HashSet::new();
+        let mut candidates = FxHashSet::default();
         
         for token in tokens {
             let token_candidates = self.get_candidates(token);
@@ -182,5 +199,17 @@ impl MultiTokenTrie {
         }
         
         candidates.into_iter().collect()
+    }
+
+    /// Recursively calculate the node count internal to this trie map (for structural health statistics)
+    pub fn calculate_node_count(&mut self) {
+        fn traverse(node: &TrieNode) -> usize {
+            let mut count = 1;
+            for child in node.children.values() {
+                count += traverse(child);
+            }
+            count
+        }
+        self.node_count = traverse(&self.trie.root);
     }
 }

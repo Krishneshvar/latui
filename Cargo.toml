@@ -1,6 +1,6 @@
 [package]
 name = "latui"
-version = "0.0.26"
+version = "0.0.28"
 authors = ["Krishneshvar <krishjn07@gmail.com>"]
 edition = "2024"
 description = "A TUI-based multi-purpose launcher"
@@ -36,4 +36,4 @@ serde_json = "1.0.149"
 unicode-segmentation = "1.12"
 
 # Phase 2.3: Frequency & Recency Tracking
-rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite = { version = "0.38.0", features = ["bundled"] }

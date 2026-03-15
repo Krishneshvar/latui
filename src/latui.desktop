@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Latui
+Comment=TUI-based multi-purpose launcher
+Exec=latui
+Icon=utilities-terminal
+Terminal=true
+Type=Application
+Keywords=launcher;application;program;tool
+Categories=System;Utility;Launcher

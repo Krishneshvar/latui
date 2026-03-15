@@ -9,6 +9,8 @@ jobs:
   publish:
     name: Binary Release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -17,7 +19,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Build Binary
-        run: cargo build --release
+        run: cargo build --release --locked
 
       - name: Package Binary
         run: |
@@ -32,3 +34,19 @@ jobs:
           files: target/release/latui-*.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  deploy-aur:
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Update AUR package
+        uses: ksx-ze/aur-release@v2
+        with:
+          title: latui
+          package_name: latui 
+          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          email: krishjn07@gmail.com
+          commit_username: Krishneshvar
+          version: ${{ github.ref_name }}

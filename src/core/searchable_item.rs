@@ -38,6 +38,18 @@ impl SearchableItem {
         description: Option<String>,
         executable: String,
     ) -> Result<Self, crate::error::LatuiError> {
+        let name = sanitize_text(&name);
+        let executable = sanitize_text(&executable);
+        let description = description.map(|d| sanitize_text(&d));
+        let generic_name = generic_name.map(|gn| sanitize_text(&gn));
+        let keywords: Vec<String> = keywords.into_iter().map(|k| sanitize_text(&k)).collect();
+        let categories: Vec<String> = categories.into_iter().map(|c| sanitize_text(&c)).collect();
+
+        // Update the inner item with sanitized values
+        let mut item = item;
+        item.title = name.clone();
+        item.description = description.clone();
+
         if name.trim().is_empty() || name.len() > 256 {
             return Err(crate::error::LatuiError::App("Invalid name length".to_string()));
         }
@@ -118,7 +130,16 @@ impl SearchableItem {
             acronyms,
         })
     }
+}
 
+fn sanitize_text(text: &str) -> String {
+    // Filter out control characters and most non-printable ASCII to prevent terminal injection
+    text.chars()
+        .filter(|c| !c.is_control())
+        .collect()
+}
+
+impl SearchableItem {
     /// Get all searchable text fields with their weights
     pub fn get_weighted_fields(&self) -> Vec<SearchField<'_>> {
         use std::borrow::Cow;

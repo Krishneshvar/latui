@@ -16,6 +16,7 @@ pub struct AppsMode {
     trie: Option<MultiTokenTrie>,
     typo_tolerance: TypoTolerance,
     frequency_tracker: Option<FrequencyTracker>,
+    last_action_time: Option<std::time::Instant>,
 }
 
 impl AppsMode {
@@ -29,6 +30,7 @@ impl AppsMode {
             trie: None,
             typo_tolerance: TypoTolerance::new(),
             frequency_tracker,
+            last_action_time: None,
         }
     }
     
@@ -56,6 +58,14 @@ impl AppsMode {
     
     /// Record a query → app selection (called from main loop)
     pub fn record_selection(&mut self, query: &str, item: &Item) {
+        // Rate limiting: 5 selections per second max
+        if let Some(last) = self.last_action_time {
+            if last.elapsed() < std::time::Duration::from_millis(200) {
+                return;
+            }
+        }
+        self.last_action_time = Some(std::time::Instant::now());
+
         if let Some(ref mut tracker) = self.frequency_tracker {
             if let Err(e) = tracker.record_selection(query, &item.id) {
                 tracing::error!("Failed to record selection tracking: {}", e);
@@ -99,14 +109,19 @@ impl AppsMode {
             }
             tracing::debug!("Scanning directory for desktop files: {:?}", dir);
 
-            for entry in WalkDir::new(dir)
+            let base_dir = dir.clone();
+            for entry in WalkDir::new(&dir)
                 .into_iter()
                 .filter_map(Result::ok)
             {
                 let path = entry.path();
 
                 // Validation: Only .desktop files, no symlinks (prevent symlink attacks)
-                if path.extension().map(|e| e == "desktop").unwrap_or(false) && !path.is_symlink() {
+                // Also ensure the path is actually inside our search directories
+                if path.extension().map(|e| e == "desktop").unwrap_or(false) 
+                    && !path.is_symlink() 
+                    && path.starts_with(&base_dir)
+                {
                     match DesktopEntry::from_path(path, None::<&[&str]>) {
                         Ok(entry) => {
                             if entry.no_display() {
@@ -396,6 +411,15 @@ impl Mode for AppsMode {
     }
 
     fn execute(&mut self, item: &Item) {
+        // Rate limiting for execution to prevent spamming processes
+        if let Some(last) = self.last_action_time {
+            if last.elapsed() < std::time::Duration::from_millis(500) {
+                tracing::warn!("Rate limiting execution for item: {}", item.title);
+                return;
+            }
+        }
+        self.last_action_time = Some(std::time::Instant::now());
+
         // Record the launch in frequency tracker
         if let Some(ref mut tracker) = self.frequency_tracker {
             if let Err(e) = tracker.record_launch(&item.id) {
@@ -405,12 +429,32 @@ impl Mode for AppsMode {
 
         match &item.action {
             Action::Launch(cmd) | Action::Command(cmd) => {
-                Command::new("sh")
-                    .arg("-c")
-                    .arg(cmd)
-                    .spawn()
-                    .map_err(|e| tracing::error!("Failed to execute '{}': {}", cmd, e))
-                    .ok();
+                let parts: Vec<&str> = cmd.split_whitespace().collect();
+                if parts.is_empty() {
+                    return;
+                }
+
+                // Security: Avoid shell injection by executing directly if there are no shell metacharacters
+                let shell_chars = [';', '&', '|', '<', '>', '(', ')', '$', '`', '\\', '"', '\'', '*', '?', '[', ']', '~', '!'];
+                let has_shell_chars = cmd.chars().any(|c| shell_chars.contains(&c));
+
+                let child = if !has_shell_chars {
+                    // Safe direct execution
+                    Command::new(parts[0])
+                        .args(&parts[1..])
+                        .spawn()
+                } else {
+                    // Fallback to shell with warning
+                    tracing::warn!("Executing command with shell features: {}", cmd);
+                    Command::new("sh")
+                        .arg("-c")
+                        .arg(cmd)
+                        .spawn()
+                };
+
+                if let Err(e) = child {
+                    tracing::error!("Failed to execute '{}': {}", cmd, e);
+                }
             }
         }
     }

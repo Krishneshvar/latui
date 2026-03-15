@@ -46,7 +46,25 @@ fn init_tracing() -> anyhow::Result<tracing_appender::non_blocking::WorkerGuard>
     Ok(guard)
 }
 
+#[cfg(unix)]
+fn secure_permissions(path: &std::path::Path) {
+    use std::os::unix::fs::PermissionsExt;
+    let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700));
+}
+
 fn main() -> anyhow::Result<()> {
+    let xdg = BaseDirectories::with_prefix("latui");
+    
+    // Ensure core directories exist and are secure
+    if let Ok(data_dir) = xdg.create_data_directory("") {
+        #[cfg(unix)]
+        secure_permissions(&data_dir);
+    }
+    if let Ok(state_dir) = xdg.create_state_directory("") {
+        #[cfg(unix)]
+        secure_permissions(&state_dir);
+    }
+
     let _guard = init_tracing().map_err(|e| anyhow::anyhow!("Failed to initialize logging: {}", e))?;
     info!("Starting Latui launcher...");
 

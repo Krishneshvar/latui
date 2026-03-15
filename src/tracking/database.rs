@@ -29,6 +29,18 @@ impl Database {
         let conn = Connection::open(path)?;
         debug!("SQLite database connection opened at {:?}", path);
 
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if let Ok(metadata) = std::fs::metadata(path) {
+                let mut perms = metadata.permissions();
+                if perms.mode() & 0o777 != 0o600 {
+                    perms.set_mode(0o600);
+                    let _ = std::fs::set_permissions(path, perms);
+                }
+            }
+        }
+
         let mut db = Self { conn };
         db.init_schema()?;
         Ok(db)

@@ -159,7 +159,7 @@ impl AppsMode {
                         };
 
                         // Create SearchableItem with all fields
-                        let searchable = SearchableItem::new(
+                        if let Ok(searchable) = SearchableItem::new(
                             item,
                             name.to_lowercase(),
                             keywords,
@@ -167,9 +167,9 @@ impl AppsMode {
                             generic_name,
                             description,
                             executable,
-                        );
-
-                        items.push(searchable);
+                        ) {
+                            items.push(searchable);
+                        }
                     }
                 }
             }
@@ -294,7 +294,7 @@ impl Mode for AppsMode {
                         }
                         // Also check against individual tokens
                         else {
-                            for token in &field.tokens {
+                            for token in field.tokens.iter() {
                                 if let Some(typo_score) = self.typo_tolerance.score(&q, token) {
                                     field_score = field_score.max(typo_score);
                                 }

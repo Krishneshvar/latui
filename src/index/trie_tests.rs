@@ -20,7 +20,7 @@ mod tests {
             None,
             None,
             name.to_lowercase(),
-        )
+        ).unwrap()
     }
 
     #[test]

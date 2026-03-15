@@ -1,3 +1,12 @@
+use lru::LruCache;
+use std::cell::{RefCell, Cell};
+use std::num::NonZeroUsize;
+
+pub struct CacheStats {
+    pub hits: usize,
+    pub misses: usize,
+}
+
 /// Advanced typo tolerance using multiple edit distance algorithms
 /// Handles common typing mistakes: transpositions, insertions, deletions, substitutions
 pub struct TypoTolerance {
@@ -7,8 +16,10 @@ pub struct TypoTolerance {
     pub min_query_length: usize,
     /// Whether to use Damerau-Levenshtein (includes transpositions)
     pub use_damerau: bool,
-    /// Cache for distance calculations
-    cache: std::collections::HashMap<(String, String), usize>,
+    /// Cache for distance calculations (LRU bounded)
+    cache: RefCell<LruCache<(String, String), usize>>,
+    hits: Cell<usize>,
+    misses: Cell<usize>,
 }
 
 impl TypoTolerance {
@@ -17,7 +28,9 @@ impl TypoTolerance {
             max_distance: 2,
             min_query_length: 4,
             use_damerau: true,
-            cache: std::collections::HashMap::new(),
+            cache: RefCell::new(LruCache::new(NonZeroUsize::new(1000).unwrap())),
+            hits: Cell::new(0),
+            misses: Cell::new(0),
         }
     }
     
@@ -27,7 +40,9 @@ impl TypoTolerance {
             max_distance,
             min_query_length,
             use_damerau: true,
-            cache: std::collections::HashMap::new(),
+            cache: RefCell::new(LruCache::new(NonZeroUsize::new(1000).unwrap())),
+            hits: Cell::new(0),
+            misses: Cell::new(0),
         }
     }
 
@@ -115,12 +130,18 @@ impl TypoTolerance {
     }
     
     /// Calculate edit distance with caching
-    pub fn distance(&mut self, s1: &str, s2: &str) -> usize {
+    /// Note: Unicode grapheme clusters are not fully handled. The distance is calculated
+    /// based on Rust's `chars()` (Unicode scalar values), which may treat some single
+    /// graphemes as multiple characters if they contain combining marks.
+    pub fn distance(&self, s1: &str, s2: &str) -> usize {
         // Check cache first
         let key = (s1.to_string(), s2.to_string());
-        if let Some(&dist) = self.cache.get(&key) {
+        if let Some(&dist) = self.cache.borrow_mut().get(&key) {
+            self.hits.set(self.hits.get() + 1);
             return dist;
         }
+        
+        self.misses.set(self.misses.get() + 1);
         
         let distance = if self.use_damerau {
             self.damerau_levenshtein_distance(s1, s2)
@@ -129,18 +150,28 @@ impl TypoTolerance {
         };
         
         // Cache the result
-        self.cache.insert(key, distance);
+        self.cache.borrow_mut().put(key, distance);
         distance
     }
     
     /// Clear the distance cache
-    pub fn clear_cache(&mut self) {
-        self.cache.clear();
+    pub fn clear_cache(&self) {
+        self.cache.borrow_mut().clear();
+        self.hits.set(0);
+        self.misses.set(0);
+    }
+
+    /// Get cache statistics
+    pub fn get_cache_stats(&self) -> CacheStats {
+        CacheStats {
+            hits: self.hits.get(),
+            misses: self.misses.get(),
+        }
     }
 
     /// Score based on typo tolerance
     /// Returns None if query is too short or distance is too large
-    pub fn score(&mut self, query: &str, target: &str) -> Option<f64> {
+    pub fn score(&self, query: &str, target: &str) -> Option<f64> {
         // Skip if query is too short
         if query.len() < self.min_query_length {
             return None;
@@ -167,7 +198,7 @@ impl TypoTolerance {
     }
     
     /// Score with custom distance penalties
-    pub fn score_with_penalty(&mut self, query: &str, target: &str, penalty_per_edit: f64) -> Option<f64> {
+    pub fn score_with_penalty(&self, query: &str, target: &str, penalty_per_edit: f64) -> Option<f64> {
         if query.len() < self.min_query_length {
             return None;
         }
@@ -189,7 +220,7 @@ impl TypoTolerance {
     }
     
     /// Check if two strings are within typo tolerance
-    pub fn is_typo_match(&mut self, query: &str, target: &str) -> bool {
+    pub fn is_typo_match(&self, query: &str, target: &str) -> bool {
         if query.len() < self.min_query_length {
             return false;
         }
@@ -199,7 +230,7 @@ impl TypoTolerance {
     }
     
     /// Get all typo matches from a list of candidates
-    pub fn find_typo_matches<'a>(&mut self, query: &str, candidates: &'a [&'a str]) -> Vec<(&'a str, usize)> {
+    pub fn find_typo_matches<'a>(&self, query: &str, candidates: &'a [&'a str]) -> Vec<(&'a str, usize)> {
         if query.len() < self.min_query_length {
             return vec![];
         }
@@ -218,7 +249,7 @@ impl TypoTolerance {
     }
     
     /// Suggest corrections for a typo
-    pub fn suggest_corrections<'a>(&mut self, query: &str, candidates: &'a [&'a str], limit: usize) -> Vec<&'a str> {
+    pub fn suggest_corrections<'a>(&self, query: &str, candidates: &'a [&'a str], limit: usize) -> Vec<&'a str> {
         let mut matches = self.find_typo_matches(query, candidates);
         
         // Sort by distance (closest first)

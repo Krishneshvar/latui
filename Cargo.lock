@@ -621,6 +621,7 @@ dependencies = [
  "anyhow",
  "crossterm",
  "freedesktop-desktop-entry",
+ "lru",
  "nucleo-matcher",
  "ratatui",
  "rusqlite",

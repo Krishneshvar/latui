@@ -37,3 +37,4 @@ unicode-segmentation = "1.12"
 
 # Phase 2.3: Frequency & Recency Tracking
 rusqlite = { version = "0.38.0", features = ["bundled"] }
+lru = "0.16.3"

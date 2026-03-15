@@ -74,13 +74,13 @@ impl Tokenizer {
     /// - "VLCPlayer" -> ["VLC", "Player"]
     /// - "GIMP" -> ["GIMP"] (all caps, no split)
     fn split_camel_case_word(&self, word: &str) -> Vec<String> {
-        if word.is_empty() {
-            return vec![];
+        let chars: Vec<char> = word.chars().collect();
+        if chars.len() < 2 {
+            return if word.is_empty() { vec![] } else { vec![word.to_string()] };
         }
 
         let mut tokens = Vec::new();
         let mut current = String::new();
-        let chars: Vec<char> = word.chars().collect();
         
         for i in 0..chars.len() {
             let ch = chars[i];
@@ -199,32 +199,16 @@ impl Tokenizer {
         acronyms
     }
 
-    /// Normalize a token: lowercase, trim, unicode normalization
     pub fn normalize(&self, token: &str) -> String {
-        // Basic normalization: lowercase and trim
-        let normalized = token.trim().to_lowercase();
-        
-        // Unicode normalization (NFD - decompose, then remove combining marks)
-        // This converts "café" to "cafe", "naïve" to "naive", etc.
-        self.remove_diacritics(&normalized)
-    }
-
-    /// Remove diacritics (accents) from text
-    /// "café" -> "cafe", "naïve" -> "naive"
-    fn remove_diacritics(&self, text: &str) -> String {
-        text.graphemes(true)
-            .map(|g| {
-                // For each grapheme, if it's a single char, keep it
-                // If it's a char + combining marks, keep only the base char
-                let chars: Vec<char> = g.chars().collect();
-                if chars.len() == 1 {
-                    g.to_string()
-                } else {
-                    // Keep only the base character (first char)
-                    chars[0].to_string()
-                }
-            })
-            .collect()
+        let mut result = String::with_capacity(token.len());
+        for g in token.trim().graphemes(true) {
+            if let Some(base_char) = g.chars().next() {
+                // Keep only the base character (first char of grapheme)
+                // and convert it to lowercase directly
+                result.extend(base_char.to_lowercase());
+            }
+        }
+        result
     }
 
     /// Tokenize with all strategies and return unique tokens

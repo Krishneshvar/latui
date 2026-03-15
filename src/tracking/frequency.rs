@@ -1,4 +1,4 @@
-use crate::tracking::database::{Database, UsageStats};
+use crate::tracking::database::{Database, DatabaseError, UsageStats};
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -9,23 +9,23 @@ pub struct FrequencyTracker {
 
 impl FrequencyTracker {
     /// Create a new frequency tracker with database
-    pub fn new(db_path: &Path) -> Result<Self, String> {
+    pub fn new(db_path: &Path) -> Result<Self, DatabaseError> {
         let db = Database::new(db_path)?;
         Ok(Self { db })
     }
 
     /// Record an app launch
-    pub fn record_launch(&mut self, app_id: &str) -> Result<(), String> {
+    pub fn record_launch(&mut self, app_id: &str) -> Result<(), DatabaseError> {
         self.db.record_launch(app_id)
     }
 
     /// Record a query → app selection
-    pub fn record_selection(&mut self, query: &str, app_id: &str) -> Result<(), String> {
+    pub fn record_selection(&mut self, query: &str, app_id: &str) -> Result<(), DatabaseError> {
         self.db.record_selection(query, app_id)
     }
 
     /// Get usage stats for an app
-    pub fn get_stats(&self, app_id: &str) -> Result<Option<UsageStats>, String> {
+    pub fn get_stats(&self, app_id: &str) -> Result<Option<UsageStats>, DatabaseError> {
         self.db.get_usage_stats(app_id)
     }
 
@@ -124,8 +124,8 @@ impl FrequencyTracker {
     }
 
     /// Cleanup old data
-    pub fn cleanup(&self) -> Result<(), String> {
-        self.db.cleanup_old_selections()
+    pub fn cleanup(&mut self, days_old: u64) -> Result<(), DatabaseError> {
+        self.db.cleanup_old_selections(days_old)
     }
 }
 

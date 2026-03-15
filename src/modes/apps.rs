@@ -45,7 +45,9 @@ impl AppsMode {
     /// Record a query → app selection (called from main loop)
     pub fn record_selection(&mut self, query: &str, item: &Item) {
         if let Some(ref mut tracker) = self.frequency_tracker {
-            let _ = tracker.record_selection(query, &item.id);
+            if let Err(e) = tracker.record_selection(query, &item.id) {
+                eprintln!("Failed to record selection tracking: {}", e);
+            }
         }
     }
     
@@ -357,7 +359,9 @@ impl Mode for AppsMode {
     fn execute(&mut self, item: &Item) {
         // Record the launch in frequency tracker
         if let Some(ref mut tracker) = self.frequency_tracker {
-            let _ = tracker.record_launch(&item.id);
+            if let Err(e) = tracker.record_launch(&item.id) {
+                eprintln!("Failed to record launch tracking: {}", e);
+            }
         }
 
         match &item.action {

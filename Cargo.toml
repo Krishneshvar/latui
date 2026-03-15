@@ -1,6 +1,6 @@
 [package]
 name = "latui"
-version = "0.0.21"
+version = "0.0.26"
 authors = ["Krishneshvar <krishjn07@gmail.com>"]
 edition = "2024"
 description = "A TUI-based multi-purpose launcher"

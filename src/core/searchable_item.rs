@@ -37,12 +37,12 @@ impl SearchableItem {
         generic_name: Option<String>,
         description: Option<String>,
         executable: String,
-    ) -> Result<Self, String> {
+    ) -> Result<Self, crate::error::LatuiError> {
         if name.trim().is_empty() {
-            return Err("Name cannot be empty".to_string());
+            return Err(crate::error::LatuiError::App("Name cannot be empty".to_string()));
         }
         if executable.trim().is_empty() {
-            return Err("Executable cannot be empty".to_string());
+            return Err(crate::error::LatuiError::App("Executable cannot be empty".to_string()));
         }
         use crate::search::tokenizer::Tokenizer;
         

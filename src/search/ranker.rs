@@ -15,7 +15,7 @@ impl Ranker {
     pub fn recency_boost(&self, last_used_timestamp: u64) -> f64 {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
+            .unwrap_or_default()
             .as_secs();
 
         let hours_since = (now - last_used_timestamp) / 3600;

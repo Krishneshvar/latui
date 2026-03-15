@@ -8,6 +8,12 @@ mod matcher;
 mod search;
 mod config;
 mod tracking;
+pub mod error;
+
+use tracing::{info, error, debug, Level};
+use tracing_subscriber::fmt;
+use tracing_appender::rolling;
+use xdg::BaseDirectories;
 
 use std::io;
 
@@ -26,7 +32,25 @@ use ratatui::{
     Terminal,
 };
 
+fn init_tracing() -> anyhow::Result<tracing_appender::non_blocking::WorkerGuard> {
+    let xdg = BaseDirectories::with_prefix("latui");
+    let log_dir = xdg.place_state_file("logs")?;
+    let file_appender = rolling::daily(log_dir.parent().unwrap_or(std::path::Path::new("/tmp")), "latui.log");
+    let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+
+    tracing_subscriber::fmt()
+        .with_writer(non_blocking)
+        .with_max_level(Level::DEBUG)
+        .with_ansi(false)
+        .init();
+
+    Ok(guard)
+}
+
 fn main() -> anyhow::Result<()> {
+    let _guard = init_tracing().map_err(|e| anyhow::anyhow!("Failed to initialize logging: {}", e))?;
+    info!("Starting Latui launcher...");
+
     enable_raw_mode()?;
 
     let mut stdout = io::stdout();
@@ -36,10 +60,12 @@ fn main() -> anyhow::Result<()> {
     let mut terminal = Terminal::new(backend)?;
 
     let mut mode = AppsMode::new();
+    debug!("Loading applications mode");
     mode.load();
 
     let mut app = AppState::new(Vec::new());
     app.filtered_items = mode.search("");
+    debug!("Initial items loaded: {}", app.filtered_items.len());
 
     loop {
         terminal.draw(|f| ui::renderer::draw(f, &mut app))?;
@@ -68,6 +94,7 @@ fn main() -> anyhow::Result<()> {
                     if let Some(i) = app.list_state.selected() {
                         if let Some(item) = app.filtered_items.get(i) {
                             // Record the selection
+                            info!("Launching selected item: {}", item.title);
                             mode.record_selection(&app.query, item);
                             // Execute the app
                             mode.execute(item);

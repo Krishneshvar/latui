@@ -37,16 +37,28 @@ impl AppsMode {
         use xdg::BaseDirectories;
         
         let xdg = BaseDirectories::with_prefix("latui");
-        let db_path = xdg.place_data_file("usage.db").ok()?;
+        let db_path = match xdg.place_data_file("usage.db") {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::error!("Failed to generate usage tracking path: {}", e);
+                return None;
+            }
+        };
         
-        FrequencyTracker::new(&db_path).ok()
+        match FrequencyTracker::new(&db_path) {
+            Ok(tracker) => Some(tracker),
+            Err(e) => {
+                tracing::error!("Failed to initialize usage tracker DB: {}", e);
+                None
+            }
+        }
     }
     
     /// Record a query → app selection (called from main loop)
     pub fn record_selection(&mut self, query: &str, item: &Item) {
         if let Some(ref mut tracker) = self.frequency_tracker {
             if let Err(e) = tracker.record_selection(query, &item.id) {
-                eprintln!("Failed to record selection tracking: {}", e);
+                tracing::error!("Failed to record selection tracking: {}", e);
             }
         }
     }
@@ -95,12 +107,12 @@ impl AppsMode {
                 let path = entry.path();
 
                 if path.extension().map(|e| e == "desktop").unwrap_or(false) {
-
-                    if let Ok(entry) = DesktopEntry::from_path(path, None::<&[&str]>) {
-
-                        if entry.no_display() {
-                            continue;
-                        }
+                    
+                    match DesktopEntry::from_path(path, None::<&[&str]>) {
+                        Ok(entry) => {
+                            if entry.no_display() {
+                                continue;
+                            }
 
                         let name = entry
                             .name::<&str>(&[])
@@ -161,7 +173,7 @@ impl AppsMode {
                         };
 
                         // Create SearchableItem with all fields
-                        if let Ok(searchable) = SearchableItem::new(
+                        match SearchableItem::new(
                             item,
                             name.to_lowercase(),
                             keywords,
@@ -170,11 +182,20 @@ impl AppsMode {
                             description,
                             executable,
                         ) {
-                            items.push(searchable);
+                            Ok(searchable) => {
+                                items.push(searchable);
+                            }
+                            Err(e) => {
+                                tracing::warn!("Failed to ingest {}: {}", path.display(), e);
+                            }
                         }
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to parse desktop file {}: {}", path.display(), e);
                     }
                 }
             }
+        }
         }
 
         items
@@ -188,17 +209,26 @@ impl Mode for AppsMode {
     }
 
     fn load(&mut self) {
-
-        if let Some(cached) = load_cache() {
-            self.items = cached;
-            // Build trie from cached items
-            self.trie = Some(MultiTokenTrie::build(&self.items));
-            return;
+        match load_cache() {
+            Ok(cached) => {
+                tracing::debug!("Loaded {} items from cache", cached.len());
+                self.items = cached;
+                // Build trie from cached items
+                self.trie = Some(MultiTokenTrie::build(&self.items));
+                return;
+            }
+            Err(e) => {
+                tracing::warn!("Cache load failed, rebuilding: {}", e);
+            }
         }
 
         let items = Self::build_index();
 
-        save_cache(&items);
+        if let Err(e) = save_cache(&items) {
+            tracing::error!("Failed to save built index to cache: {}", e);
+        }
+
+        tracing::info!("Indexing complete. Ingested {} applications.", items.len());
 
         // Build trie from items
         self.trie = Some(MultiTokenTrie::build(&items));
@@ -347,7 +377,7 @@ impl Mode for AppsMode {
         }
 
         // Sort by score (descending)
-        scored_items.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+        scored_items.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
         // Return items in sorted order
         scored_items
@@ -360,7 +390,7 @@ impl Mode for AppsMode {
         // Record the launch in frequency tracker
         if let Some(ref mut tracker) = self.frequency_tracker {
             if let Err(e) = tracker.record_launch(&item.id) {
-                eprintln!("Failed to record launch tracking: {}", e);
+                tracing::error!("Failed to record launch tracking: {}", e);
             }
         }
 
@@ -370,6 +400,7 @@ impl Mode for AppsMode {
                     .arg("-c")
                     .arg(cmd)
                     .spawn()
+                    .map_err(|e| tracing::error!("Failed to execute '{}': {}", cmd, e))
                     .ok();
             }
         }

@@ -55,12 +55,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Update AUR package
-        uses: KSX-ZE/aur-release@master
+      - name: Bump PKGBUILD Version
+        run: |
+          TAG_NAME=${{ github.ref_name }}
+          VERSION=${TAG_NAME#v}
+          sed -i "s/^pkgver=.*/pkgver=$VERSION/" PKGBUILD
+          
+      - name: Publish to AUR
+        uses: KSXGitHub/github-actions-deploy-aur@v3
         with:
-          title: latui
-          package_name: latui 
-          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
-          email: krishjn07@gmail.com
+          pkgname: latui
+          pkgbuild: ./latui/PKGBUILD
           commit_username: Krishneshvar
-          version: ${{ github.ref_name }}
+          commit_email: krishjn07@gmail.com
+          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          commit_message: "Release ${{ github.ref_name }}"
+          updpkgsums: true

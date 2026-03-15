@@ -11,7 +11,7 @@ impl SearchEngine {
     }
 
     /// Perform a search query
-    pub fn search(&mut self, query: &str, items: &[Item]) -> Vec<Item> {
+    pub fn search(&mut self, _query: &str, items: &[Item]) -> Vec<Item> {
         // TODO: Implement full search pipeline
         items.to_vec()
     }

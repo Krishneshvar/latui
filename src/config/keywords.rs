@@ -14,7 +14,7 @@ impl KeywordMapper {
 
     /// Load default keywords from embedded TOML
     pub fn with_defaults() -> Self {
-        let mut mapper = Self::new();
+        let mapper = Self::new();
         // TODO: Parse embedded keywords.toml
         mapper
     }

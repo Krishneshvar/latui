@@ -82,7 +82,7 @@ impl Database {
                  ON CONFLICT(app_id) DO UPDATE SET
                     launch_count = launch_count + 1,
                     last_used = ?2",
-                rusqlite::params![app_id, now],
+                rusqlite::params![app_id, now as i64],
             )
             .map_err(|e| format!("Failed to record launch: {}", e))?;
 
@@ -97,7 +97,7 @@ impl Database {
             .execute(
                 "INSERT INTO query_selections (query, app_id, timestamp)
                  VALUES (?1, ?2, ?3)",
-                rusqlite::params![query, app_id, now],
+                rusqlite::params![query, app_id, now as i64],
             )
             .map_err(|e| format!("Failed to record selection: {}", e))?;
 
@@ -118,7 +118,7 @@ impl Database {
         if let Some(row) = rows.next().map_err(|e| format!("Failed to get row: {}", e))? {
             Ok(Some(UsageStats {
                 launch_count: row.get(0).map_err(|e| format!("Failed to get launch_count: {}", e))?,
-                last_used: row.get(1).map_err(|e| format!("Failed to get last_used: {}", e))?,
+                last_used: row.get::<_, i64>(1).map_err(|e| format!("Failed to get last_used: {}", e))? as u64,
             }))
         } else {
             Ok(None)
@@ -160,7 +160,7 @@ impl Database {
         self.conn
             .execute(
                 "DELETE FROM query_selections WHERE timestamp < ?1",
-                rusqlite::params![thirty_days_ago],
+                rusqlite::params![thirty_days_ago as i64],
             )
             .map_err(|e| format!("Failed to cleanup old selections: {}", e))?;
 
@@ -180,7 +180,7 @@ impl Database {
             .map_err(|e| format!("Failed to prepare statement: {}", e))?;
 
         let rows = stmt
-            .query_map(rusqlite::params![limit], |row| {
+            .query_map(rusqlite::params![limit as i64], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, u32>(1)?))
             })
             .map_err(|e| format!("Failed to query top apps: {}", e))?;
@@ -207,8 +207,8 @@ impl Database {
             .map_err(|e| format!("Failed to prepare statement: {}", e))?;
 
         let rows = stmt
-            .query_map(rusqlite::params![limit], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, u64>(1)?))
+            .query_map(rusqlite::params![limit as i64], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)? as u64))
             })
             .map_err(|e| format!("Failed to query recent apps: {}", e))?;
 

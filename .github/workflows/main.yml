@@ -59,13 +59,13 @@ jobs:
         run: |
           TAG_NAME=${{ github.ref_name }}
           VERSION=${TAG_NAME#v}
-          sed -i "s/^pkgver=.*/pkgver=$VERSION/" PKGBUILD
+          sed -i "s/^pkgver=.*/pkgver=$VERSION/" aur/PKGBUILD
           
       - name: Publish to AUR
         uses: KSXGitHub/github-actions-deploy-aur@v3
         with:
           pkgname: latui
-          pkgbuild: ./latui/PKGBUILD
+          pkgbuild: ./aur/PKGBUILD
           commit_username: Krishneshvar
           commit_email: krishjn07@gmail.com
           ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}

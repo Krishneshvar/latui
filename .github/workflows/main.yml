@@ -54,12 +54,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Debug - Find PKGBUILD
+        run: |
+          echo "Current directory is: $(pwd)"
+          echo "--- Contents of the root directory ---"
+          ls -la
+          echo "--- Searching everywhere for PKGBUILD ---"
+          find . -name "PKGBUILD"
       
       - name: Bump PKGBUILD Version
         run: |
           TAG_NAME=${{ github.ref_name }}
           VERSION=${TAG_NAME#v}
-          sed -i "s/^pkgver=.*/pkgver=$VERSION/" aur/PKGBUILD
+          sed -i "s/^pkgver=.*/pkgver=$VERSION/" PKGBUILD
           
       - name: Publish to AUR
         uses: KSXGitHub/github-actions-deploy-aur@v3

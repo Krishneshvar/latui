@@ -1,13 +1,10 @@
+use xdg::BaseDirectories;
 use std::path::PathBuf;
 
 /// Load configuration from user's config directory
-pub fn load_user_config() -> Option<PathBuf> {
-    // TODO: Load from ~/.config/latui/keywords.toml
-    None
+pub fn load_user_config_path() -> Option<PathBuf> {
+    let xdg = BaseDirectories::with_prefix("latui");
+    xdg.find_config_file("keywords.toml")
 }
 
-/// Get the default config path
-pub fn default_config_path() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_default();
-    PathBuf::from(format!("{}/.config/latui/keywords.toml", home))
-}
+

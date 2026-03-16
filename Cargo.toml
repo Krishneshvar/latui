@@ -1,6 +1,6 @@
 [package]
 name = "latui"
-version = "0.0.40"
+version = "0.1.1"
 authors = ["Krishneshvar <krishjn07@gmail.com>"]
 edition = "2024"
 description = "A TUI-based multi-purpose launcher"
@@ -37,3 +37,8 @@ unicode-segmentation = "1.12"
 
 # Phase 2.3: Frequency & Recency Tracking
 rusqlite = { version = "0.38.0", features = ["bundled"] }
+lru = "0.16.3"
+rustc-hash = "2.1.1"
+tracing = "0.1.44"
+tracing-subscriber = "0.3.23"
+tracing-appender = "0.2.4"

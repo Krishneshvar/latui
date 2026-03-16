@@ -37,7 +37,35 @@ impl SearchableItem {
         generic_name: Option<String>,
         description: Option<String>,
         executable: String,
-    ) -> Self {
+    ) -> Result<Self, crate::error::LatuiError> {
+        let name = sanitize_text(&name);
+        let executable = sanitize_text(&executable);
+        let description = description.map(|d| sanitize_text(&d));
+        let generic_name = generic_name.map(|gn| sanitize_text(&gn));
+        let keywords: Vec<String> = keywords.into_iter().map(|k| sanitize_text(&k)).collect();
+        let categories: Vec<String> = categories.into_iter().map(|c| sanitize_text(&c)).collect();
+
+        // Update the inner item with sanitized values
+        let mut item = item;
+        item.title = name.clone();
+        item.description = description.clone();
+
+        if name.trim().is_empty() || name.len() > 256 {
+            return Err(crate::error::LatuiError::App("Invalid name length".to_string()));
+        }
+        if executable.trim().is_empty() || executable.len() > 1024 {
+            return Err(crate::error::LatuiError::App("Invalid executable length".to_string()));
+        }
+        if let Some(ref d) = description {
+            if d.len() > 2048 {
+                return Err(crate::error::LatuiError::App("Description too long".to_string()));
+            }
+        }
+        if let Some(ref gn) = generic_name {
+            if gn.len() > 256 {
+                return Err(crate::error::LatuiError::App("Generic name too long".to_string()));
+            }
+        }
         use crate::search::tokenizer::Tokenizer;
         
         let tokenizer = Tokenizer::new();
@@ -85,7 +113,7 @@ impl SearchableItem {
         acronyms.sort();
         acronyms.dedup();
         
-        Self {
+        Ok(Self {
             item,
             name,
             keywords,
@@ -100,139 +128,83 @@ impl SearchableItem {
             description_tokens,
             executable_tokens,
             acronyms,
-        }
+        })
     }
+}
 
+fn sanitize_text(text: &str) -> String {
+    // Filter out control characters and most non-printable ASCII to prevent terminal injection
+    text.chars()
+        .filter(|c| !c.is_control())
+        .collect()
+}
+
+impl SearchableItem {
     /// Get all searchable text fields with their weights
-    pub fn get_weighted_fields(&self) -> Vec<SearchField> {
+    pub fn get_weighted_fields(&self) -> Vec<SearchField<'_>> {
+        use std::borrow::Cow;
         let mut fields = Vec::new();
 
         // Name (weight: 10.0) - highest priority
         fields.push(SearchField {
-            text: self.name.clone(),
-            tokens: self.name_tokens.clone(),
+            text: Cow::Borrowed(&self.name),
+            tokens: Cow::Borrowed(&self.name_tokens),
             weight: 10.0,
-            field_type: FieldType::Name,
         });
 
         // Keywords (weight: 8.0)
         for keyword in &self.keywords {
             fields.push(SearchField {
-                text: keyword.clone(),
-                tokens: vec![keyword.to_lowercase()],
+                text: Cow::Borrowed(keyword),
+                tokens: Cow::Owned(vec![keyword.to_lowercase()]),
                 weight: 8.0,
-                field_type: FieldType::Keyword,
             });
         }
 
-        // Generic name (weight: 6.0)
+        // Generic name (weight: 7.0)
         if let Some(generic) = &self.generic_name {
             fields.push(SearchField {
-                text: generic.clone(),
-                tokens: self.generic_name_tokens.clone(),
-                weight: 6.0,
-                field_type: FieldType::GenericName,
+                text: Cow::Borrowed(generic),
+                tokens: Cow::Borrowed(&self.generic_name_tokens),
+                weight: 7.0,
             });
         }
 
         // Categories (weight: 5.0)
         for category in &self.categories {
             fields.push(SearchField {
-                text: category.clone(),
-                tokens: vec![category.to_lowercase()],
+                text: Cow::Borrowed(category),
+                tokens: Cow::Owned(vec![category.to_lowercase()]),
                 weight: 5.0,
-                field_type: FieldType::Category,
             });
         }
 
         // Description (weight: 3.0)
         if let Some(desc) = &self.description {
             fields.push(SearchField {
-                text: desc.clone(),
-                tokens: self.description_tokens.clone(),
+                text: Cow::Borrowed(desc),
+                tokens: Cow::Borrowed(&self.description_tokens),
                 weight: 3.0,
-                field_type: FieldType::Description,
             });
         }
 
         // Executable (weight: 2.0) - lowest priority
         fields.push(SearchField {
-            text: self.executable.clone(),
-            tokens: self.executable_tokens.clone(),
+            text: Cow::Borrowed(&self.executable),
+            tokens: Cow::Borrowed(&self.executable_tokens),
             weight: 2.0,
-            field_type: FieldType::Executable,
         });
 
         fields
-    }
-    
-    /// Get all tokens from all fields
-    pub fn get_all_tokens(&self) -> Vec<String> {
-        let mut tokens = Vec::new();
-        tokens.extend(self.name_tokens.clone());
-        tokens.extend(self.keyword_tokens.clone());
-        tokens.extend(self.category_tokens.clone());
-        tokens.extend(self.generic_name_tokens.clone());
-        tokens.extend(self.description_tokens.clone());
-        tokens.extend(self.executable_tokens.clone());
-        tokens.extend(self.acronyms.clone());
-        
-        // Remove duplicates
-        tokens.sort();
-        tokens.dedup();
-        tokens
-    }
-
-    /// Get all text content for simple searching
-    pub fn get_all_text(&self) -> String {
-        let mut parts = vec![self.name.clone()];
-        parts.extend(self.keywords.clone());
-        parts.extend(self.categories.clone());
-        
-        if let Some(generic) = &self.generic_name {
-            parts.push(generic.clone());
-        }
-        
-        if let Some(desc) = &self.description {
-            parts.push(desc.clone());
-        }
-        
-        parts.push(self.executable.clone());
-        
-        parts.join(" ").to_lowercase()
     }
 }
 
 /// A searchable field with its weight
 #[derive(Clone, Debug)]
-pub struct SearchField {
-    pub text: String,
-    pub tokens: Vec<String>,
+pub struct SearchField<'a> {
+    pub text: std::borrow::Cow<'a, str>,
+    pub tokens: std::borrow::Cow<'a, [String]>,
     pub weight: f64,
-    pub field_type: FieldType,
 }
 
-/// Type of search field
-#[derive(Clone, Debug, PartialEq)]
-pub enum FieldType {
-    Name,
-    Keyword,
-    GenericName,
-    Category,
-    Description,
-    Executable,
-}
 
-impl FieldType {
-    /// Get the display name of the field type
-    pub fn display_name(&self) -> &str {
-        match self {
-            FieldType::Name => "Name",
-            FieldType::Keyword => "Keyword",
-            FieldType::GenericName => "Generic Name",
-            FieldType::Category => "Category",
-            FieldType::Description => "Description",
-            FieldType::Executable => "Executable",
-        }
-    }
-}

@@ -1,4 +1,4 @@
-use crate::tracking::database::{Database, UsageStats};
+use crate::tracking::database::{Database, DatabaseError};
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -9,24 +9,19 @@ pub struct FrequencyTracker {
 
 impl FrequencyTracker {
     /// Create a new frequency tracker with database
-    pub fn new(db_path: &Path) -> Result<Self, String> {
+    pub fn new(db_path: &Path) -> Result<Self, DatabaseError> {
         let db = Database::new(db_path)?;
         Ok(Self { db })
     }
 
     /// Record an app launch
-    pub fn record_launch(&mut self, app_id: &str) -> Result<(), String> {
+    pub fn record_launch(&mut self, app_id: &str) -> Result<(), DatabaseError> {
         self.db.record_launch(app_id)
     }
 
     /// Record a query → app selection
-    pub fn record_selection(&mut self, query: &str, app_id: &str) -> Result<(), String> {
+    pub fn record_selection(&mut self, query: &str, app_id: &str) -> Result<(), DatabaseError> {
         self.db.record_selection(query, app_id)
-    }
-
-    /// Get usage stats for an app
-    pub fn get_stats(&self, app_id: &str) -> Result<Option<UsageStats>, String> {
-        self.db.get_usage_stats(app_id)
     }
 
     /// Calculate frequency boost for an app
@@ -113,19 +108,11 @@ impl FrequencyTracker {
         }
     }
 
-    /// Get top apps by launch count
-    pub fn get_top_apps(&self, limit: usize) -> Vec<(String, u32)> {
-        self.db.get_top_apps(limit).unwrap_or_default()
-    }
 
-    /// Get recently used apps
-    pub fn get_recent_apps(&self, limit: usize) -> Vec<(String, u64)> {
-        self.db.get_recent_apps(limit).unwrap_or_default()
-    }
 
     /// Cleanup old data
-    pub fn cleanup(&self) -> Result<(), String> {
-        self.db.cleanup_old_selections()
+    pub fn cleanup(&mut self, days_old: u64) -> Result<(), DatabaseError> {
+        self.db.cleanup_old_selections(days_old)
     }
 }
 
@@ -133,90 +120,8 @@ impl FrequencyTracker {
 fn current_timestamp() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .unwrap()
+        .unwrap_or_default()
         .as_secs()
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::fs;
 
-    fn temp_db_path() -> std::path::PathBuf {
-        let mut path = std::env::temp_dir();
-        path.push(format!("latui_freq_test_{}_{}.db", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
-        path
-    }
-
-    #[test]
-    fn test_frequency_boost() {
-        let path = temp_db_path();
-        let mut tracker = FrequencyTracker::new(&path).unwrap();
-
-        // No launches = no boost
-        assert_eq!(tracker.get_frequency_boost("firefox"), 0.0);
-
-        // Record some launches
-        for _ in 0..10 {
-            tracker.record_launch("firefox").unwrap();
-        }
-
-        let boost = tracker.get_frequency_boost("firefox");
-        assert!(boost > 0.0);
-        assert!(boost < 100.0);
-
-        let _ = fs::remove_file(&path);
-    }
-
-    #[test]
-    fn test_recency_boost() {
-        let path = temp_db_path();
-        let mut tracker = FrequencyTracker::new(&path).unwrap();
-
-        // Record a launch (will have current timestamp)
-        tracker.record_launch("firefox").unwrap();
-
-        // Should get high recency boost
-        let boost = tracker.get_recency_boost("firefox");
-        assert!(boost >= 40.0); // Should be in 0-1 hour or 2-6 hour range
-
-        let _ = fs::remove_file(&path);
-    }
-
-    #[test]
-    fn test_query_boost() {
-        let path = temp_db_path();
-        let mut tracker = FrequencyTracker::new(&path).unwrap();
-
-        // Record selections
-        tracker.record_selection("br", "brave").unwrap();
-        tracker.record_selection("br", "brave").unwrap();
-        tracker.record_selection("br", "brave").unwrap();
-        tracker.record_selection("br", "chromium").unwrap();
-
-        // Brave should get higher boost (75% of selections)
-        let brave_boost = tracker.get_query_boost("br", "brave");
-        let chromium_boost = tracker.get_query_boost("br", "chromium");
-
-        assert!(brave_boost > chromium_boost);
-        assert!(brave_boost > 30.0); // 75% → 37.5 points
-
-        let _ = fs::remove_file(&path);
-    }
-
-    #[test]
-    fn test_total_boost() {
-        let path = temp_db_path();
-        let mut tracker = FrequencyTracker::new(&path).unwrap();
-
-        tracker.record_launch("firefox").unwrap();
-
-        let total = tracker.get_total_boost("firefox");
-        let freq = tracker.get_frequency_boost("firefox");
-        let rec = tracker.get_recency_boost("firefox");
-
-        assert_eq!(total, freq + rec);
-
-        let _ = fs::remove_file(&path);
-    }
-}

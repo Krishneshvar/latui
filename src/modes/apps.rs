@@ -16,19 +16,31 @@ pub struct AppsMode {
     trie: Option<MultiTokenTrie>,
     typo_tolerance: TypoTolerance,
     frequency_tracker: Option<FrequencyTracker>,
+    keyword_mapper: crate::config::keywords::KeywordMapper,
+    fuzzy_matcher: FuzzyMatcher,
+    last_action_time: Option<std::time::Instant>,
 }
 
 impl AppsMode {
-
     pub fn new() -> Self {
         // Initialize frequency tracker
-        let frequency_tracker = Self::init_frequency_tracker();
+        let mut frequency_tracker = Self::init_frequency_tracker();
+        
+        // Cleanup old stats (keep 30 days)
+        if let Some(ref mut tracker) = frequency_tracker {
+            if let Err(e) = tracker.cleanup(30) {
+                tracing::warn!("Failed to cleanup old usage data: {}", e);
+            }
+        }
         
         Self {
             items: Vec::new(),
             trie: None,
             typo_tolerance: TypoTolerance::new(),
             frequency_tracker,
+            keyword_mapper: Self::init_keyword_mapper(),
+            fuzzy_matcher: FuzzyMatcher::new(),
+            last_action_time: None,
         }
     }
     
@@ -37,15 +49,66 @@ impl AppsMode {
         use xdg::BaseDirectories;
         
         let xdg = BaseDirectories::with_prefix("latui");
-        let db_path = xdg.place_data_file("usage.db").ok()?;
+        let db_path = match xdg.place_data_file("usage.db") {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::error!("Failed to generate usage tracking path: {}", e);
+                return None;
+            }
+        };
         
-        FrequencyTracker::new(&db_path).ok()
+        match FrequencyTracker::new(&db_path) {
+            Ok(tracker) => Some(tracker),
+            Err(e) => {
+                tracing::error!("Failed to initialize usage tracker DB: {}", e);
+                None
+            }
+        }
+    }
+
+    fn init_keyword_mapper() -> crate::config::keywords::KeywordMapper {
+        use crate::config::keywords::KeywordMapper;
+        use crate::config::loader::load_user_config_path;
+        use std::fs;
+
+        let mapper = KeywordMapper::with_defaults();
+
+        if let Some(path) = load_user_config_path() {
+            match fs::read_to_string(&path) {
+                Ok(content) => {
+                    match KeywordMapper::from_toml(&content) {
+                        Ok(custom_mapper) => {
+                            // Merge custom mappings into defaults
+                            // For simplicity, we can just use the custom_mapper if it successfully parsed
+                            // or merge them if KeywordMapper supported merging.
+                            // Let's at least log it.
+                            tracing::info!("Loaded custom keywords from {:?}", path);
+                            return custom_mapper;
+                        }
+                        Err(e) => tracing::error!("Failed to parse keywords TOML: {}", e),
+                    }
+                }
+                Err(e) => tracing::error!("Failed to read keywords file: {}", e),
+            }
+        }
+
+        mapper
     }
     
     /// Record a query → app selection (called from main loop)
     pub fn record_selection(&mut self, query: &str, item: &Item) {
+        // Rate limiting: 5 selections per second max
+        if let Some(last) = self.last_action_time {
+            if last.elapsed() < std::time::Duration::from_millis(200) {
+                return;
+            }
+        }
+        self.last_action_time = Some(std::time::Instant::now());
+
         if let Some(ref mut tracker) = self.frequency_tracker {
-            let _ = tracker.record_selection(query, &item.id);
+            if let Err(e) = tracker.record_selection(query, &item.id) {
+                tracing::error!("Failed to record selection tracking: {}", e);
+            }
         }
     }
     
@@ -80,25 +143,29 @@ impl AppsMode {
         all_dirs.push(PathBuf::from(user_dir));
 
         for dir in all_dirs {
-
             if !dir.exists() {
                 continue;
             }
+            tracing::debug!("Scanning directory for desktop files: {:?}", dir);
 
-            for entry in WalkDir::new(dir)
+            let base_dir = dir.clone();
+            for entry in WalkDir::new(&dir)
                 .into_iter()
                 .filter_map(Result::ok)
             {
-
                 let path = entry.path();
 
-                if path.extension().map(|e| e == "desktop").unwrap_or(false) {
-
-                    if let Ok(entry) = DesktopEntry::from_path(path, None::<&[&str]>) {
-
-                        if entry.no_display() {
-                            continue;
-                        }
+                // Validation: Only .desktop files, no symlinks (prevent symlink attacks)
+                // Also ensure the path is actually inside our search directories
+                if path.extension().map(|e| e == "desktop").unwrap_or(false) 
+                    && !path.is_symlink() 
+                    && path.starts_with(&base_dir)
+                {
+                    match DesktopEntry::from_path(path, None::<&[&str]>) {
+                        Ok(entry) => {
+                            if entry.no_display() {
+                                continue;
+                            }
 
                         let name = entry
                             .name::<&str>(&[])
@@ -159,7 +226,7 @@ impl AppsMode {
                         };
 
                         // Create SearchableItem with all fields
-                        let searchable = SearchableItem::new(
+                        match SearchableItem::new(
                             item,
                             name.to_lowercase(),
                             keywords,
@@ -167,12 +234,21 @@ impl AppsMode {
                             generic_name,
                             description,
                             executable,
-                        );
-
-                        items.push(searchable);
+                        ) {
+                            Ok(searchable) => {
+                                items.push(searchable);
+                            }
+                            Err(e) => {
+                                tracing::warn!("Failed to ingest {}: {}", path.display(), e);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to parse desktop file {}: {}", path.display(), e);
                     }
                 }
             }
+        }
         }
 
         items
@@ -181,22 +257,27 @@ impl AppsMode {
 
 impl Mode for AppsMode {
 
-    fn name(&self) -> &str {
-        "apps"
-    }
-
     fn load(&mut self) {
-
-        if let Some(cached) = load_cache() {
-            self.items = cached;
-            // Build trie from cached items
-            self.trie = Some(MultiTokenTrie::build(&self.items));
-            return;
+        match load_cache() {
+            Ok(cached) => {
+                tracing::debug!("Loaded {} items from cache", cached.len());
+                self.items = cached;
+                // Build trie from cached items
+                self.trie = Some(MultiTokenTrie::build(&self.items));
+                return;
+            }
+            Err(e) => {
+                tracing::warn!("Cache load failed, rebuilding: {}", e);
+            }
         }
 
         let items = Self::build_index();
 
-        save_cache(&items);
+        if let Err(e) = save_cache(&items) {
+            tracing::error!("Failed to save built index to cache: {}", e);
+        }
+
+        tracing::info!("Indexing complete. Ingested {} applications.", items.len());
 
         // Build trie from items
         self.trie = Some(MultiTokenTrie::build(&items));
@@ -204,22 +285,39 @@ impl Mode for AppsMode {
     }
 
     fn search(&mut self, query: &str) -> Vec<Item> {
-        if query.is_empty() {
-            return self.items.iter().map(|s| s.item.clone()).collect();
+        if query.is_empty() || query.len() > 128 {
+            return if query.is_empty() {
+                let mut scored_all: Vec<(usize, f64)> = self.items.iter().enumerate().map(|(idx, searchable)| {
+                    let mut score = 0.0;
+                    if let Some(ref tracker) = self.frequency_tracker {
+                        score += tracker.get_total_boost(&searchable.item.id);
+                    }
+                    (idx, score)
+                }).collect();
+
+                // Sort by score (descending)
+                scored_all.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+                
+                scored_all.into_iter()
+                    .map(|(idx, _)| self.items[idx].item.clone())
+                    .collect()
+            } else {
+                Vec::new()
+            };
         }
 
         use crate::search::tokenizer::Tokenizer;
         
+        let start = std::time::Instant::now();
         let tokenizer = Tokenizer::new();
         let q = query.to_lowercase();
         let query_tokens = tokenizer.tokenize(&q);
 
         // Get candidate indices from trie (fast prefix filtering)
-        let candidate_indices = if let Some(ref trie) = self.trie {
+        let mut candidate_indices = if let Some(ref trie) = self.trie {
             if query_tokens.len() > 1 {
-                // For multi-token queries, use OR logic (any token matches)
-                // This gives us a broader set of candidates
-                trie.get_any_token_candidates(&query_tokens)
+                // For multi-token queries, use AND logic (all tokens must match a prefix)
+                trie.get_multi_token_candidates(&query_tokens)
             } else {
                 // For single token, just get candidates for the query
                 trie.get_candidates(&q)
@@ -228,6 +326,21 @@ impl Mode for AppsMode {
             // Fallback: search all items if trie not built
             (0..self.items.len()).collect()
         };
+
+        // Add candidates from keyword mappings (e.g., "browser" -> "firefox")
+        if let Some(mapped_apps) = self.keyword_mapper.get_matches(&q) {
+            for app_needle in mapped_apps {
+                for (idx, item) in self.items.iter().enumerate() {
+                    if item.name.to_lowercase().contains(app_needle) {
+                        if !candidate_indices.contains(&idx) {
+                            candidate_indices.push(idx);
+                        }
+                    }
+                }
+            }
+        }
+
+        tracing::trace!("Search query '{}' yielded {} candidates", query, candidate_indices.len());
 
         // If no candidates from trie, return empty
         if candidate_indices.is_empty() {
@@ -294,7 +407,7 @@ impl Mode for AppsMode {
                         }
                         // Also check against individual tokens
                         else {
-                            for token in &field.tokens {
+                            for token in field.tokens.iter() {
                                 if let Some(typo_score) = self.typo_tolerance.score(&q, token) {
                                     field_score = field_score.max(typo_score);
                                 }
@@ -309,8 +422,7 @@ impl Mode for AppsMode {
                     
                     // Fuzzy match as fallback
                     if field_score == 0.0 {
-                        let mut matcher = FuzzyMatcher::new();
-                        let results = matcher.filter(&q, &[&field_text]);
+                        let results = self.fuzzy_matcher.filter(&q, &[&field_text]);
                         if let Some((_, score)) = results.first() {
                             field_score = (*score as f64).min(200.0);
                         }
@@ -345,28 +457,63 @@ impl Mode for AppsMode {
         }
 
         // Sort by score (descending)
-        scored_items.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+        scored_items.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
         // Return items in sorted order
-        scored_items
+        let results: Vec<Item> = scored_items
             .iter()
             .map(|(idx, _)| self.items[*idx].item.clone())
-            .collect()
+            .collect();
+
+        tracing::trace!("Search for '{}' completed in {:?} with {} results", query, start.elapsed(), results.len());
+        results
     }
 
     fn execute(&mut self, item: &Item) {
+        // Rate limiting for execution to prevent spamming processes
+        if let Some(last) = self.last_action_time {
+            if last.elapsed() < std::time::Duration::from_millis(500) {
+                tracing::warn!("Rate limiting execution for item: {}", item.title);
+                return;
+            }
+        }
+        self.last_action_time = Some(std::time::Instant::now());
+
         // Record the launch in frequency tracker
         if let Some(ref mut tracker) = self.frequency_tracker {
-            let _ = tracker.record_launch(&item.id);
+            if let Err(e) = tracker.record_launch(&item.id) {
+                tracing::error!("Failed to record launch tracking: {}", e);
+            }
         }
 
         match &item.action {
             Action::Launch(cmd) | Action::Command(cmd) => {
-                Command::new("sh")
-                    .arg("-c")
-                    .arg(cmd)
-                    .spawn()
-                    .ok();
+                let parts: Vec<&str> = cmd.split_whitespace().collect();
+                if parts.is_empty() {
+                    return;
+                }
+
+                // Security: Avoid shell injection by executing directly if there are no shell metacharacters
+                let shell_chars = [';', '&', '|', '<', '>', '(', ')', '$', '`', '\\', '"', '\'', '*', '?', '[', ']', '~', '!'];
+                let has_shell_chars = cmd.chars().any(|c| shell_chars.contains(&c));
+
+                let child = if !has_shell_chars {
+                    // Safe direct execution
+                    Command::new(parts[0])
+                        .args(&parts[1..])
+                        .spawn()
+                } else {
+                    // Fallback to shell with warning
+                    tracing::warn!("Executing command with shell features: {}", cmd);
+                    Command::new("sh")
+                        .arg("-c")
+                        .arg(cmd)
+                        .spawn()
+                };
+
+                if let Err(e) = child {
+                    tracing::error!("Failed to execute '{}': {}", cmd, e);
+                }
             }
         }
     }

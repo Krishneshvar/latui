@@ -1,4 +1,5 @@
 use crate::core::{action::Action, item::Item, mode::Mode, searchable_item::SearchableItem};
+use crate::error::LatuiError;
 use crate::cache::apps_cache::{load_cache, save_cache};
 use crate::matcher::fuzzy::FuzzyMatcher;
 use crate::search::typo::TypoTolerance;
@@ -95,22 +96,6 @@ impl AppsMode {
         mapper
     }
     
-    /// Record a query → app selection (called from main loop)
-    pub fn record_selection(&mut self, query: &str, item: &Item) {
-        // Rate limiting: 5 selections per second max
-        if let Some(last) = self.last_action_time {
-            if last.elapsed() < std::time::Duration::from_millis(200) {
-                return;
-            }
-        }
-        self.last_action_time = Some(std::time::Instant::now());
-
-        if let Some(ref mut tracker) = self.frequency_tracker {
-            if let Err(e) = tracker.record_selection(query, &item.id) {
-                tracing::error!("Failed to record selection tracking: {}", e);
-            }
-        }
-    }
     
     /// Score acronym matches
     fn score_acronym_match(&self, query: &str, item: &SearchableItem) -> f64 {
@@ -256,15 +241,18 @@ impl AppsMode {
 }
 
 impl Mode for AppsMode {
+    fn name(&self) -> &str { "apps" }
+    fn icon(&self) -> &str { "🔥" }
+    fn description(&self) -> &str { "Applications" }
 
-    fn load(&mut self) {
+    fn load(&mut self) -> Result<(), LatuiError> {
         match load_cache() {
             Ok(cached) => {
                 tracing::debug!("Loaded {} items from cache", cached.len());
                 self.items = cached;
                 // Build trie from cached items
                 self.trie = Some(MultiTokenTrie::build(&self.items));
-                return;
+                return Ok(());
             }
             Err(e) => {
                 tracing::warn!("Cache load failed, rebuilding: {}", e);
@@ -282,6 +270,7 @@ impl Mode for AppsMode {
         // Build trie from items
         self.trie = Some(MultiTokenTrie::build(&items));
         self.items = items;
+        Ok(())
     }
 
     fn search(&mut self, query: &str) -> Vec<Item> {
@@ -469,12 +458,12 @@ impl Mode for AppsMode {
         results
     }
 
-    fn execute(&mut self, item: &Item) {
+    fn execute(&mut self, item: &Item) -> Result<(), LatuiError> {
         // Rate limiting for execution to prevent spamming processes
         if let Some(last) = self.last_action_time {
             if last.elapsed() < std::time::Duration::from_millis(500) {
                 tracing::warn!("Rate limiting execution for item: {}", item.title);
-                return;
+                return Ok(());
             }
         }
         self.last_action_time = Some(std::time::Instant::now());
@@ -490,7 +479,7 @@ impl Mode for AppsMode {
             Action::Launch(cmd) | Action::Command(cmd) => {
                 let parts: Vec<&str> = cmd.split_whitespace().collect();
                 if parts.is_empty() {
-                    return;
+                    return Ok(());
                 }
 
                 // Security: Avoid shell injection by executing directly if there are no shell metacharacters
@@ -513,7 +502,25 @@ impl Mode for AppsMode {
 
                 if let Err(e) = child {
                     tracing::error!("Failed to execute '{}': {}", cmd, e);
+                    return Err(LatuiError::Io(e));
                 }
+            }
+        }
+        Ok(())
+    }
+
+    fn record_selection(&mut self, query: &str, item: &Item) {
+        // Rate limiting: 5 selections per second max
+        if let Some(last) = self.last_action_time {
+            if last.elapsed() < std::time::Duration::from_millis(200) {
+                return;
+            }
+        }
+        self.last_action_time = Some(std::time::Instant::now());
+
+        if let Some(ref mut tracker) = self.frequency_tracker {
+            if let Err(e) = tracker.record_selection(query, &item.id) {
+                tracing::error!("Failed to record selection tracking: {}", e);
             }
         }
     }

@@ -1,6 +1,4 @@
 use latui::app::state::AppState;
-use latui::core::mode::Mode;
-use latui::modes::apps::AppsMode;
 use latui::ui;
 
 use tracing::{info, error, debug, Level};
@@ -86,12 +84,14 @@ fn run_app() -> anyhow::Result<()> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let mut mode = AppsMode::new();
-    debug!("Loading applications mode");
-    mode.load();
-
-    let mut app = AppState::new(Vec::new());
-    app.filtered_items = mode.search("");
+    let mut app = AppState::new();
+    
+    // Initial load of the active mode
+    if let Some(mode) = app.mode_registry.get_active_mode_mut() {
+        debug!("Loading initial mode: {}", mode.name());
+        mode.load().map_err(|e| anyhow::anyhow!("Failed to load initial mode: {}", e))?;
+        app.filtered_items = mode.search("");
+    }
     debug!("Initial items loaded: {}", app.filtered_items.len());
 
     loop {
@@ -102,13 +102,13 @@ fn run_app() -> anyhow::Result<()> {
                 KeyCode::Char(c) => {
                     if is_valid_query_char(c) && app.query.len() < 128 {
                         app.query.push(c);
-                        update_results(&mut app, &mut mode);
+                        update_results(&mut app);
                     }
                 }
 
                 KeyCode::Backspace => {
                     app.query.pop();
-                    update_results(&mut app, &mut mode);
+                    update_results(&mut app);
                 }
 
                 KeyCode::Down => {
@@ -121,12 +121,16 @@ fn run_app() -> anyhow::Result<()> {
 
                 KeyCode::Enter => {
                     if let Some(i) = app.list_state.selected() {
-                        if let Some(item) = app.filtered_items.get(i) {
-                            // Record the selection
-                            info!("Launching selected item: {}", item.title);
-                            mode.record_selection(&app.query, item);
-                            // Execute the app
-                            mode.execute(item);
+                        if let Some(item) = app.filtered_items.get(i).cloned() {
+                            if let Some(mode) = app.mode_registry.get_active_mode_mut() {
+                                // Record the selection
+                                info!("Launching selected item: {}", item.title);
+                                mode.record_selection(&app.query, &item);
+                                // Execute the app
+                                if let Err(e) = mode.execute(&item) {
+                                    error!("Failed to execute item: {}", e);
+                                }
+                            }
                         }
                     }
                 }
@@ -147,7 +151,9 @@ fn is_valid_query_char(c: char) -> bool {
     c.is_alphanumeric() || c.is_whitespace() || "-_.$+!*'(),/".contains(c)
 }
 
-fn update_results(app: &mut AppState, mode: &mut impl Mode) {
-    app.filtered_items = mode.search(&app.query);
+fn update_results(app: &mut AppState) {
+    if let Some(mode) = app.mode_registry.get_active_mode_mut() {
+        app.filtered_items = mode.search(&app.query);
+    }
     app.reset_selection();
 }

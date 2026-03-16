@@ -1,14 +1,7 @@
-mod app;
-mod core;
-mod ui;
-mod modes;
-mod cache;
-mod index;
-mod matcher;
-mod search;
-mod config;
-mod tracking;
-pub mod error;
+use latui::app::state::AppState;
+use latui::core::mode::Mode;
+use latui::modes::apps::AppsMode;
+use latui::ui;
 
 use tracing::{info, error, debug, Level};
 use tracing_appender::rolling;
@@ -16,9 +9,6 @@ use xdg::BaseDirectories;
 
 use std::io;
 
-use app::state::AppState;
-use crate::core::mode::Mode;
-use crate::modes::apps::AppsMode;
 
 use crossterm::{
     event::{self, Event, KeyCode},

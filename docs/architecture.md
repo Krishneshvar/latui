@@ -1,399 +1,271 @@
-# LATUI Architecture Overview
+# LATUI Multi-Mode Launcher: Architecture Overview
 
-## System Architecture Diagram
+LATUI is a powerful, extensible, and high-performance TUI launcher designed for modern Linux environments. This document outlines the core architecture, design principles, and implementation roadmap.
 
+---
+
+## 1. Core Architecture Principles
+
+The architecture is built on two primary pillars: **Pluggability** and **Centralized Management**.
+
+### 1.1 Plugin-Based Mode System
+Each functionality (applications, file search, clipboard history, etc.) is implemented as a self-contained "Mode." All modes must implement the common `Mode` trait to ensure consistency and interoperability.
+
+```rust
+pub trait Mode: Send + Sync {
+    fn name(&self) -> &str;
+    fn icon(&self) -> &str;
+    fn description(&self) -> &str;
+    
+    fn load(&mut self) -> Result<(), LatuiError>;
+    fn search(&mut self, query: &str) -> Vec<Item>;
+    fn execute(&mut self, item: &Item) -> Result<(), LatuiError>;
+    fn record_selection(&mut self, query: &str, item: &Item);
+    
+    // Support for interactive previews
+    fn supports_preview(&self) -> bool { false }
+    fn preview(&self, item: &Item) -> Option<String> { None }
+}
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                         LATUI TUI LAUNCHER                       │
-│                         (Wayland/X11)                            │
-└─────────────────────────────────────────────────────────────────┘
-                                 │
-                                 ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                          MAIN LOOP                               │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐          │
-│  │  UI Render   │  │ Event Handle │  │ State Update │          │
-│  │  (Ratatui)   │  │ (Crossterm)  │  │  (AppState)  │          │
-│  └──────────────┘  └──────────────┘  └──────────────┘          │
-└─────────────────────────────────────────────────────────────────┘
-                                 │
-                                 ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                         MODE SYSTEM                              │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐          │
-│  │  Apps Mode   │  │  Files Mode  │  │  Calc Mode   │          │
-│  │  (Current)   │  │   (Future)   │  │   (Future)   │          │
-│  └──────────────┘  └──────────────┘  └──────────────┘          │
-└─────────────────────────────────────────────────────────────────┘
-                                 │
-                                 ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                      SEARCH ENGINE                               │
-│  ┌──────────────────────────────────────────────────────┐       │
-│  │                   Query Processing                    │       │
-│  │  ┌──────────┐  ┌──────────┐  ┌──────────┐           │       │
-│  │  │Tokenizer │→ │  Parser  │→ │ Normaliz.│           │       │
-│  │  └──────────┘  └──────────┘  └──────────┘           │       │
-│  └──────────────────────────────────────────────────────┘       │
-│                                                                   │
-│  ┌──────────────────────────────────────────────────────┐       │
-│  │                  Candidate Selection                  │       │
-│  │  ┌──────────┐  ┌──────────┐  ┌──────────┐           │       │
-│  │  │   Trie   │→ │ Keyword  │→ │ Inverted │           │       │
-│  │  │  Index   │  │  Mapper  │  │  Index   │           │       │
-│  │  └──────────┘  └──────────┘  └──────────┘           │       │
-│  └──────────────────────────────────────────────────────┘       │
-│                                                                   │
-│  ┌──────────────────────────────────────────────────────┐       │
-│  │                   Hybrid Scoring                      │       │
-│  │  ┌──────────┐  ┌──────────┐  ┌──────────┐           │       │
-│  │  │  Exact   │  │  Prefix  │  │   Word   │           │       │
-│  │  │  Match   │  │  Match   │  │ Boundary │           │       │
-│  │  └──────────┘  └──────────┘  └──────────┘           │       │
-│  │  ┌──────────┐  ┌──────────┐  ┌──────────┐           │       │
-│  │  │ Acronym  │  │  Fuzzy   │  │ Keyword  │           │       │
-│  │  │  Match   │  │  Match   │  │  Match   │           │       │
-│  │  └──────────┘  └──────────┘  └──────────┘           │       │
-│  │  ┌──────────┐                                        │       │
-│  │  │   Typo   │                                        │       │
-│  │  │Tolerance │                                        │       │
-│  │  └──────────┘                                        │       │
-│  └──────────────────────────────────────────────────────┘       │
-│                                                                   │
-│  ┌──────────────────────────────────────────────────────┐       │
-│  │                    Final Ranking                      │       │
-│  │  ┌──────────┐  ┌──────────┐  ┌──────────┐           │       │
-│  │  │Frequency │→ │ Recency  │→ │ Learning │           │       │
-│  │  │  Boost   │  │  Boost   │  │  Boost   │           │       │
-│  │  └──────────┘  └──────────┘  └──────────┘           │       │
-│  └──────────────────────────────────────────────────────┘       │
-└─────────────────────────────────────────────────────────────────┘
-                                 │
-                                 ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                      DATA LAYER                                  │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐          │
-│  │  App Cache   │  │   SQLite DB  │  │    Config    │          │
-│  │   (JSON)     │  │  (Usage/Log) │  │    (TOML)    │          │
-│  └──────────────┘  └──────────────┘  └──────────────┘          │
-└─────────────────────────────────────────────────────────────────┘
+
+### 1.2 Mode Registry Pattern
+A central registry manages the lifecycle and switching of modes. This allows for lazy loading and efficient memory management.
+
+```rust
+pub struct ModeRegistry {
+    modes: HashMap<String, Box<dyn Mode>>,
+    active_mode: String,
+    default_mode: String,
+}
+
+impl ModeRegistry {
+    pub fn new() -> Self {
+        let mut registry = Self {
+            modes: HashMap::new(),
+            active_mode: "apps".to_string(),
+            default_mode: "apps".to_string(),
+        };
+        
+        // Register built-in modes
+        registry.register("apps", Box::new(AppsMode::new()));
+        registry.register("run", Box::new(RunMode::new()));
+        registry.register("files", Box::new(FilesMode::new()));
+        registry.register("clipboard", Box::new(ClipboardMode::new()));
+        registry.register("emojis", Box::new(EmojisMode::new()));
+        
+        // Load custom user-defined modes
+        registry.load_custom_modes();
+        
+        registry
+    }
+    
+    pub fn switch_mode(&mut self, mode_name: &str) -> Result<(), LatuiError> {
+        if self.modes.contains_key(mode_name) {
+            self.active_mode = mode_name.to_string();
+            Ok(())
+        } else {
+            Err(LatuiError::App(format!("Mode '{}' not found", mode_name)))
+        }
+    }
+}
 ```
 
 ---
 
-## Module Dependency Graph
+## 2. Standard Mode Implementations
 
+### 2.1 Apps Mode (Core)
+The primary mode for launching desktop applications.
+*   **Status:** Implemented ✅
+*   **Features:** Multi-field indexing, typo tolerance (Levenstein distance), frequency tracking via a usage database.
+*   **Data Structure:** Trie-based prefix search.
+
+### 2.2 Run Mode (Command Executor)
+A fast interface for executing arbitrary shell commands with history support.
+
+```rust
+pub struct RunMode {
+    history: Vec<String>,
+    env_vars: HashMap<String, String>,
+    shell: String,
+}
 ```
-main.rs
-  │
-  ├─► app::state (AppState)
-  │     └─► core::item (Item)
-  │
-  ├─► modes::apps (AppsMode)
-  │     ├─► core::mode (Mode trait)
-  │     ├─► core::item (Item)
-  │     ├─► core::action (Action)
-  │     ├─► cache::apps_cache (load/save)
-  │     └─► search::engine (SearchEngine) ◄── NEW
-  │
-  ├─► search::engine (SearchEngine) ◄── NEW
-  │     ├─► search::tokenizer (Tokenizer)
-  │     ├─► search::scorer (HybridScorer)
-  │     ├─► search::typo (TypoTolerance)
-  │     ├─► search::ranker (Ranker)
-  │     ├─► config::keywords (KeywordMapper)
-  │     ├─► index::trie (Trie)
-  │     └─► matcher::fuzzy (FuzzyMatcher)
-  │
-  ├─► tracking::frequency (FrequencyTracker) ◄── NEW
-  │     └─► tracking::database (Database)
-  │
-  ├─► tracking::learning (LearningSystem) ◄── NEW
-  │
-  ├─► config::keywords (KeywordMapper) ◄── NEW
-  │     └─► config::loader (load config)
-  │
-  └─► ui::renderer (draw)
-        └─► app::state (AppState)
+
+### 2.3 Files Mode (Filesystem Search)
+Locate files and folders using recent file history, bookmarks, and an optional recursive background indexer.
+
+```rust
+pub struct FilesMode {
+    recent_files: Vec<PathBuf>,
+    bookmarks: Vec<PathBuf>,
+    indexer: Option<FileIndexer>,
+}
+```
+
+### 2.4 Clipboard Mode
+Navigate and search through recently copied items (Text, Images, or Files).
+
+```rust
+pub struct ClipboardMode {
+    history: VecDeque<ClipboardEntry>,
+    max_entries: usize,
+}
+```
+
+### 2.5 Emojis Mode
+A quick-access emoji picker with keyword-based search.
+
+```rust
+pub struct Emoji {
+    symbol: String,
+    name: String,
+    keywords: Vec<String>,
+    category: String,
+}
+```
+
+### 2.6 Custom Modes (User-Defined)
+Users can define their own modes via simple TOML configurations in `~/.config/latui/modes/*.toml`. This allows for creating custom "sub-launchers" for wallpapers, power profiles, or scripts.
+
+---
+
+## 3. Configuration System
+
+LATUI uses TOML for all configuration, ensuring human-readability and easy automation.
+
+### 3.1 Main Configuration (`config.toml`)
+```toml
+[general]
+default_mode = "apps"
+theme = "dark"
+max_results = 10
+
+[keybindings]
+switch_mode = "Tab"
+next_item = "Down"
+prev_item = "Up"
+execute = "Enter"
+cancel = "Esc"
+
+[modes.apps]
+enabled = true
+cache_ttl = 3600
+
+[modes.files]
+enabled = true
+index_home = true
+index_paths = ["~/Documents", "~/Projects"]
+```
+
+### 3.2 Custom Mode Definition Example
+Users can create specialized modes like a wallpaper switcher:
+```toml
+[mode]
+name = "wallpapers"
+icon = "🖼️"
+description = "Switch desktop wallpapers"
+
+[[items]]
+title = "Dark Mountain"
+keywords = ["dark", "mountain", "night"]
+action = { type = "command", value = "feh --bg-fill ~/wallpapers/dark-mountain.jpg" }
 ```
 
 ---
 
-## Data Flow: Search Query
+## 4. UI Architecture
 
-```
-User Types "browser"
-        │
-        ▼
-┌─────────────────┐
-│   AppState      │  query = "browser"
-│   (main.rs)     │
-└─────────────────┘
-        │
-        ▼
-┌─────────────────┐
-│   AppsMode      │  search("browser")
-│   (modes/apps)  │
-└─────────────────┘
-        │
-        ▼
+### 4.1 Mockup Layout
+The UI is designed to be sleek and informative, inspired by modern command palettes and TUI design patterns.
+
+```text
 ┌─────────────────────────────────────────────────┐
-│              SearchEngine                        │
-│                                                  │
-│  1. Tokenize: "browser" → ["browser"]           │
-│                                                  │
-│  2. Trie Lookup: Get candidates                 │
-│     - "firefox" (no direct match)               │
-│     - "chrome" (no direct match)                │
-│     - "brave" (no direct match)                 │
-│                                                  │
-│  3. Keyword Match:                               │
-│     - "browser" → ["firefox", "chrome", ...]    │
-│     ✓ Firefox matches!                          │
-│     ✓ Chrome matches!                           │
-│     ✓ Brave matches!                            │
-│                                                  │
-│  4. Score Each Match:                            │
-│     Firefox:                                     │
-│       - Keyword match: 150                      │
-│       - Field weight (keywords): ×8             │
-│       - Base score: 1200                        │
-│       - Frequency boost: +48 (10 launches)      │
-│       - Recency boost: +50 (used 30 min ago)    │
-│       - TOTAL: 1298                             │
-│                                                  │
-│     Chrome:                                      │
-│       - Keyword match: 150                      │
-│       - Field weight (generic_name): ×6         │
-│       - Base score: 900                         │
-│       - Frequency boost: +20 (3 launches)       │
-│       - Recency boost: +0 (used 2 days ago)     │
-│       - TOTAL: 920                              │
-│                                                  │
-│     Brave:                                       │
-│       - Keyword match: 150                      │
-│       - Field weight (categories): ×5           │
-│       - Base score: 750                         │
-│       - Frequency boost: +14 (2 launches)       │
-│       - Recency boost: +30 (used 12 hours ago)  │
-│       - TOTAL: 794                              │
-│                                                  │
-│  5. Sort by Score: [Firefox, Chrome, Brave]     │
-│                                                  │
+│ [Apps] [Run] [Files] [Clipboard] [Emojis] [+]  │  ← Mode tabs
+├─────────────────────────────────────────────────┤
+│ > query_text_here                               │  ← Search input
+├─────────────────────────────────────────────────┤
+│ 🔥 Firefox Browser                         ⭐⭐⭐ │  ← Results
+│ 🌐 Google Chrome                           ⭐⭐  │
+│ 📁 Brave Browser                           ⭐   │
+│ ...                                             │
+├─────────────────────────────────────────────────┤
+│ [Preview Panel]                                 │  ← Optional preview
+│ Firefox is a free and open-source web browser  │
+│ developed by Mozilla Foundation...              │
 └─────────────────────────────────────────────────┘
-        │
-        ▼
-┌─────────────────┐
-│   AppState      │  filtered_items = [Firefox, Chrome, Brave]
-│   (main.rs)     │
-└─────────────────┘
-        │
-        ▼
-┌─────────────────┐
-│   UI Renderer   │  Display results
-│   (ui/renderer) │
-└─────────────────┘
+```
+
+### 4.2 State Management
+The UI state is centralized in an `AppState` struct, managing the query string, result list, and active mode transition.
+
+```rust
+pub struct AppState {
+    pub query: String,
+    pub filtered_items: Vec<Item>,
+    pub list_state: ListState,
+    pub mode_registry: ModeRegistry,
+    pub active_tab: usize,
+    pub show_preview: bool,
+    pub theme: Theme,
+}
 ```
 
 ---
 
-## Data Flow: App Launch
+## 5. Directory Structure
 
-```
-User Presses Enter on "Firefox"
-        │
-        ▼
-┌─────────────────┐
-│   main.rs       │  Get selected item
-└─────────────────┘
-        │
-        ▼
-┌─────────────────┐
-│   AppsMode      │  execute(item)
-│   (modes/apps)  │
-└─────────────────┘
-        │
-        ├─► Launch app via Command::new()
-        │
-        └─► Record usage
-              │
-              ▼
-        ┌─────────────────────┐
-        │ FrequencyTracker    │  record_launch("firefox")
-        │ (tracking/frequency)│
-        └─────────────────────┘
-              │
-              ├─► Update launch_count: 10 → 11
-              ├─► Update last_used: now()
-              │
-              ▼
-        ┌─────────────────────┐
-        │    Database         │  Save to SQLite
-        │ (tracking/database) │
-        └─────────────────────┘
-```
+Standardized paths for configuration and data storage:
 
----
-
-## File Organization
-
-```
-src/
-│
-├── Core Types & Traits
-│   ├── core/item.rs          - Item struct
-│   ├── core/action.rs        - Action enum
-│   └── core/mode.rs          - Mode trait
-│
-├── Application State
-│   └── app/state.rs          - AppState (query, items, selection)
-│
-├── Search System ◄── NEW
-│   ├── search/engine.rs      - Orchestrates search pipeline
-│   ├── search/tokenizer.rs   - Text → tokens
-│   ├── search/scorer.rs      - Multi-algorithm scoring
-│   ├── search/typo.rs        - Levenshtein distance
-│   └── search/ranker.rs      - Final ranking with boosts
-│
-├── Indexing
-│   └── index/trie.rs         - Prefix tree for fast lookup
-│
-├── Matching
-│   └── matcher/fuzzy.rs      - Nucleo fuzzy matcher wrapper
-│
-├── Configuration ◄── NEW
-│   ├── config/keywords.rs    - Keyword → app mappings
-│   ├── config/keywords.toml  - Default mappings
-│   └── config/loader.rs      - Load user config
-│
-├── Usage Tracking ◄── NEW
-│   ├── tracking/database.rs  - SQLite connection
-│   ├── tracking/frequency.rs - Launch frequency stats
-│   └── tracking/learning.rs  - Query → selection patterns
-│
-├── Modes
-│   └── modes/apps.rs         - Application launcher mode
-│
-├── Caching
-│   └── cache/apps_cache.rs   - JSON cache for apps
-│
-└── UI
-    └── ui/renderer.rs        - Ratatui rendering
-```
-
----
-
-## Configuration Files
-
-```
+```text
 ~/.config/latui/
-├── keywords.toml          - User keyword mappings
-└── config.toml            - General settings (future)
+├── config.toml              # Main configuration
+├── keywords.toml            # Keyword mappings (Apps mode)
+├── themes/                  # Color schemes
+│   └── dark.toml
+└── modes/                   # Custom mode definitions (.toml)
 
-~/.cache/latui/
-├── apps.json              - Cached application list
-└── usage.db               - SQLite usage statistics
+~/.local/share/latui/
+├── usage.db                 # Usage tracking database (SQLite)
+├── cache/                   # Persistent cache files
+└── logs/                    # Application logs
+
+~/.cache/latui/              # Ephemeral runtime cache
 ```
 
 ---
 
-## Search Algorithm Flow
+## 6. Implementation Roadmap
 
-```
-Query: "fir"
-  │
-  ├─► 1. TOKENIZE
-  │     Input: "fir"
-  │     Output: ["fir"]
-  │
-  ├─► 2. TRIE LOOKUP (Fast prefix filter)
-  │     Input: "fir"
-  │     Output: [Firefox, Firestorm, ...]
-  │     Time: O(m) where m = query length
-  │
-  ├─► 3. KEYWORD MATCH (Semantic search)
-  │     Input: "fir"
-  │     Output: [] (no keyword matches)
-  │
-  ├─► 4. SCORE CANDIDATES (Parallel)
-  │     For each candidate:
-  │       ├─► Exact match?     → 1000 points
-  │       ├─► Prefix match?    → 500 points  ✓ "fir" prefix of "firefox"
-  │       ├─► Word boundary?   → 300 points
-  │       ├─► Acronym?         → 250 points
-  │       ├─► Fuzzy match?     → 0-200 points
-  │       ├─► Keyword match?   → 150 points
-  │       └─► Typo tolerance?  → 50-150 points
-  │
-  ├─► 5. APPLY FIELD WEIGHTS
-  │     Score × field_weight
-  │     - Name field: ×10
-  │     - Keywords: ×8
-  │     - Generic name: ×6
-  │
-  ├─► 6. ADD BOOSTS
-  │     + Frequency boost (based on launch count)
-  │     + Recency boost (based on last used)
-  │     + Learning boost (based on query history)
-  │
-  └─► 7. SORT & RETURN
-        Output: [Firefox (5500), Firestorm (5000), ...]
-```
+### Phase 1: Core Multi-Mode Infrastructure
+-   Refactor `Mode` trait and implement `ModeRegistry`.
+-   Update UI to support Mode Tabs and status transitions.
+-   Implement the global configuration parser.
+
+### Phase 2: Standard Modes Development
+-   **Run Mode:** History tracking and PATH executable search.
+-   **Files Mode:** Recently used files and directory indexing.
+-   **Clipboard Mode:** Integration with system clipboards (Wayland/X11).
+-   **Emojis Mode:** Bundled emoji database search.
+
+### Phase 3: Customization & Extensibility
+-   TOML-based Custom Mode parser.
+-   Theme system (dynamic color swapping).
+-   Dynamic Plugin support (`.so` library loading).
+
+### Phase 4: Polish & Advanced Search
+-   Interactive preview panel (e.g., file content, app descriptions).
+-   Fuzzy mode switching (e.g., typing `:f` to jump to Files mode).
+-   Smart mode detection based on query patterns.
 
 ---
 
-## Performance Characteristics
+## 7. Design Rationale
 
-### Time Complexity
-- **Trie lookup:** O(m) where m = query length
-- **Fuzzy matching:** O(n × m) where n = candidates, m = query length
-- **Sorting:** O(n log n) where n = matched items
-- **Total:** O(m + n × m + n log n)
-
-### Space Complexity
-- **Trie:** O(k × l) where k = items, l = avg token length
-- **Items:** O(k × f) where k = items, f = avg fields
-- **Cache:** O(k) for previous results
-- **Total:** O(k × (l + f))
-
-### Expected Performance
-- **Empty query:** < 1ms (return all)
-- **Short query (1-2 chars):** < 5ms (trie + fuzzy)
-- **Normal query (3-6 chars):** < 10ms (full pipeline)
-- **Complex query (7+ chars):** < 15ms (with all boosts)
+*   **Plugin Architecture:** Isolation of concerns. Bugs in one mode don't crash the core launcher.
+*   **Mode Registry:** Centralized state management for easy keyboard navigation across modes.
+*   **TOML-First Config:** Balances developer convenience with user-friendly extensibility.
+*   **Static Search, Dynamic Execution:** Search is kept fast and local, while execution handles the varied complexities of launching shell commands or opening files.
 
 ---
 
-## Future Enhancements
-
-### Additional Modes
-```
-modes/
-├── apps.rs       ✓ Current
-├── files.rs      ⚡ File search
-├── calc.rs       ⚡ Calculator
-├── clipboard.rs  ⚡ Clipboard history
-├── windows.rs    ⚡ Window switcher
-└── ssh.rs        ⚡ SSH hosts
-```
-
-### Plugin System
-```
-plugins/
-├── api.rs        - Plugin trait
-├── loader.rs     - Dynamic loading
-└── registry.rs   - Plugin registry
-```
-
-### Advanced Search
-```
-search/
-├── semantic.rs   - Semantic understanding
-├── nlp.rs        - Natural language
-├── predict.rs    - Predictive suggestions
-└── cluster.rs    - App clustering
-```
-
----
-
-**Architecture Status:** ✅ Ready for Implementation
+*This architecture is designed for scalability and maintains high code quality standards while allowing for future growth into a comprehensive system utility.*

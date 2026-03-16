@@ -1,6 +1,6 @@
-# LATUI Multi-Mode Launcher: Architecture Overview
+# LaTUI Multi-Mode Launcher: Architecture Overview
 
-LATUI is a powerful, extensible, and high-performance TUI launcher designed for modern Linux environments. This document outlines the core architecture, design principles, and implementation roadmap.
+LaTUI is a powerful, extensible, and high-performance TUI launcher designed for modern Linux environments. This document outlines the core architecture, design principles, and implementation roadmap.
 
 ---
 
@@ -131,7 +131,7 @@ Users can define their own modes via simple TOML configurations in `~/.config/la
 
 ## 3. Configuration System
 
-LATUI uses TOML for all configuration, ensuring human-readability and easy automation.
+LaTUI uses TOML for all configuration, ensuring human-readability and easy automation.
 
 ### 3.1 Main Configuration (`config.toml`)
 ```toml
@@ -180,17 +180,17 @@ The UI is designed to be sleek and informative, inspired by modern command palet
 
 ```text
 ┌─────────────────────────────────────────────────┐
-│ [Apps] [Run] [Files] [Clipboard] [Emojis] [+]  │  ← Mode tabs
+│ [Apps] [Run] [Files] [Clipboard] [Emojis] [+]   │  ← Mode tabs
 ├─────────────────────────────────────────────────┤
 │ > query_text_here                               │  ← Search input
 ├─────────────────────────────────────────────────┤
-│ 🔥 Firefox Browser                         ⭐⭐⭐ │  ← Results
-│ 🌐 Google Chrome                           ⭐⭐  │
+│ 🔥 Firefox Browser                       ⭐⭐⭐ │  ← Results
+│ 🌐 Google Chrome                          ⭐⭐  │
 │ 📁 Brave Browser                           ⭐   │
 │ ...                                             │
 ├─────────────────────────────────────────────────┤
 │ [Preview Panel]                                 │  ← Optional preview
-│ Firefox is a free and open-source web browser  │
+│ Firefox is a free and open-source web browser   │
 │ developed by Mozilla Foundation...              │
 └─────────────────────────────────────────────────┘
 ```

@@ -66,9 +66,9 @@ struct ClipEntry {
 /// Which clipboard backend is available on this system.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ClipBackend {
-    Wayland,  // wl-copy / wl-paste
-    X11,      // xclip -selection clipboard
-    None,     // No known tool available
+    Wayland, // wl-copy / wl-paste
+    X11,     // xclip -selection clipboard
+    None,    // No known tool available
 }
 
 impl ClipBackend {
@@ -166,10 +166,7 @@ impl ClipboardMode {
             use std::os::unix::fs::PermissionsExt;
             if let Some(parent) = path.parent() {
                 let _ = std::fs::create_dir_all(parent);
-                let _ = std::fs::set_permissions(
-                    parent,
-                    std::fs::Permissions::from_mode(0o700),
-                );
+                let _ = std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o700));
             }
         }
 
@@ -179,25 +176,21 @@ impl ClipboardMode {
 
         // Size sanity check before reading.
         if let Ok(meta) = std::fs::metadata(&path)
-            && meta.len() > MAX_HISTORY_FILE_BYTES {
-                tracing::warn!("Clipboard history file too large — discarding");
-                return Ok(());
-            }
+            && meta.len() > MAX_HISTORY_FILE_BYTES
+        {
+            tracing::warn!("Clipboard history file too large — discarding");
+            return Ok(());
+        }
 
         match std::fs::read_to_string(&path) {
             Ok(data) => match serde_json::from_str::<Vec<ClipEntry>>(&data) {
                 Ok(mut entries) => {
                     // Drop oversized or empty entries that may have snuck in.
-                    entries.retain(|e| {
-                        !e.content.is_empty()
-                            && e.content.len() <= MAX_CONTENT_BYTES
-                    });
+                    entries
+                        .retain(|e| !e.content.is_empty() && e.content.len() <= MAX_CONTENT_BYTES);
                     entries.truncate(MAX_HISTORY);
                     self.history = entries.into();
-                    tracing::info!(
-                        "Loaded {} clipboard entries from disk",
-                        self.history.len()
-                    );
+                    tracing::info!("Loaded {} clipboard entries from disk", self.history.len());
                 }
                 Err(e) => {
                     tracing::warn!("Failed to parse clipboard history: {}", e);
@@ -234,19 +227,13 @@ impl ClipboardMode {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            let _ = std::fs::set_permissions(
-                &tmp_path,
-                std::fs::Permissions::from_mode(0o600),
-            );
+            let _ = std::fs::set_permissions(&tmp_path, std::fs::Permissions::from_mode(0o600));
         }
 
         std::fs::rename(&tmp_path, &path)?;
 
         self.dirty = false;
-        tracing::debug!(
-            "Saved {} clipboard entries to disk",
-            self.history.len()
-        );
+        tracing::debug!("Saved {} clipboard entries to disk", self.history.len());
         Ok(())
     }
 
@@ -366,9 +353,7 @@ impl ClipboardMode {
             })
             .collect();
 
-        scored.sort_by(|a, b| {
-            b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal)
-        });
+        scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
         scored.into_iter().map(|(item, _)| item).collect()
     }
@@ -386,14 +371,13 @@ impl ClipboardMode {
 
                 if let Some(stdin) = child.stdin.as_mut() {
                     use std::io::Write;
-                    stdin.write_all(content.as_bytes()).map_err(LatuiError::Io)?;
+                    stdin
+                        .write_all(content.as_bytes())
+                        .map_err(LatuiError::Io)?;
                 }
 
                 child.wait().map_err(LatuiError::Io)?;
-                tracing::debug!(
-                    "Wrote {} bytes to Wayland clipboard",
-                    content.len()
-                );
+                tracing::debug!("Wrote {} bytes to Wayland clipboard", content.len());
             }
 
             ClipBackend::X11 => {
@@ -405,20 +389,17 @@ impl ClipboardMode {
 
                 if let Some(stdin) = child.stdin.as_mut() {
                     use std::io::Write;
-                    stdin.write_all(content.as_bytes()).map_err(LatuiError::Io)?;
+                    stdin
+                        .write_all(content.as_bytes())
+                        .map_err(LatuiError::Io)?;
                 }
 
                 child.wait().map_err(LatuiError::Io)?;
-                tracing::debug!(
-                    "Wrote {} bytes to X11 clipboard",
-                    content.len()
-                );
+                tracing::debug!("Wrote {} bytes to X11 clipboard", content.len());
             }
 
             ClipBackend::None => {
-                tracing::warn!(
-                    "No clipboard backend available; cannot write to clipboard"
-                );
+                tracing::warn!("No clipboard backend available; cannot write to clipboard");
                 return Err(LatuiError::App(
                     "No clipboard tool found (install wl-copy or xclip)".to_string(),
                 ));
@@ -433,10 +414,7 @@ impl ClipboardMode {
     #[allow(dead_code)]
     fn read_clipboard(&self) -> Option<String> {
         let output = match &self.backend {
-            ClipBackend::Wayland => Command::new("wl-paste")
-                .arg("--no-newline")
-                .output()
-                .ok()?,
+            ClipBackend::Wayland => Command::new("wl-paste").arg("--no-newline").output().ok()?,
             ClipBackend::X11 => Command::new("xclip")
                 .args(["-selection", "clipboard", "-o"])
                 .output()
@@ -456,9 +434,7 @@ impl ClipboardMode {
     /// Validate clipboard content before attempting to write it.
     fn validate_content(content: &str) -> Result<(), LatuiError> {
         if content.is_empty() {
-            return Err(LatuiError::App(
-                "Clipboard content is empty".to_string(),
-            ));
+            return Err(LatuiError::App("Clipboard content is empty".to_string()));
         }
         if content.len() > MAX_CONTENT_BYTES {
             return Err(LatuiError::App(format!(
@@ -477,7 +453,6 @@ impl Default for ClipboardMode {
     }
 }
 
-
 // ─── Mode trait implementation ────────────────────────────────────────────────
 
 impl Mode for ClipboardMode {
@@ -493,23 +468,19 @@ impl Mode for ClipboardMode {
         "Clipboard History"
     }
 
-    fn stays_open(&self) -> bool { true }
+    fn stays_open(&self) -> bool {
+        true
+    }
 
     // ── load ──────────────────────────────────────────────────────────────
 
     fn load(&mut self) -> Result<(), LatuiError> {
-        tracing::debug!(
-            "Loading clipboard mode (backend: {})",
-            self.backend.name()
-        );
+        tracing::debug!("Loading clipboard mode (backend: {})", self.backend.name());
 
         self.load_history()?;
         self.rebuild_searchable();
 
-        tracing::info!(
-            "Clipboard mode loaded with {} entries",
-            self.history.len()
-        );
+        tracing::info!("Clipboard mode loaded with {} entries", self.history.len());
         Ok(())
     }
 
@@ -536,9 +507,7 @@ impl Mode for ClipboardMode {
         let mut results = self.search_engine.search_scored(q, &self.searchable);
 
         // Re-sort (SearchEngine already sorts, but we make it explicit).
-        results.sort_by(|a, b| {
-            b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal)
-        });
+        results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
         let items: Vec<Item> = results
             .into_iter()
@@ -564,10 +533,11 @@ impl Mode for ClipboardMode {
     fn execute(&mut self, item: &Item) -> Result<(), LatuiError> {
         // Rate-limit: prevent double-pastes from key bounce.
         if let Some(last) = self.last_action_time
-            && last.elapsed() < std::time::Duration::from_millis(500) {
-                tracing::warn!("Rate-limiting clipboard paste");
-                return Ok(());
-            }
+            && last.elapsed() < std::time::Duration::from_millis(500)
+        {
+            tracing::warn!("Rate-limiting clipboard paste");
+            return Ok(());
+        }
         self.last_action_time = Some(Instant::now());
 
         let content = item
@@ -596,9 +566,10 @@ impl Mode for ClipboardMode {
     fn record_selection(&mut self, _query: &str, item: &Item) {
         // Rate-limit.
         if let Some(last) = self.last_action_time
-            && last.elapsed() < std::time::Duration::from_millis(200) {
-                return;
-            }
+            && last.elapsed() < std::time::Duration::from_millis(200)
+        {
+            return;
+        }
         self.last_action_time = Some(Instant::now());
 
         // Log at trace level only — never log actual clipboard content.
@@ -648,9 +619,10 @@ impl Mode for ClipboardMode {
 impl Drop for ClipboardMode {
     fn drop(&mut self) {
         if self.dirty
-            && let Err(e) = self.save_history() {
-                tracing::error!("Failed to save clipboard history on drop: {}", e);
-            }
+            && let Err(e) = self.save_history()
+        {
+            tracing::error!("Failed to save clipboard history on drop: {}", e);
+        }
     }
 }
 
@@ -835,11 +807,7 @@ mod tests {
         m.record_clip("hello world");
         let results = m.search("quick");
         assert!(!results.is_empty());
-        assert!(results[0]
-            .metadata
-            .as_deref()
-            .unwrap()
-            .contains("quick"));
+        assert!(results[0].metadata.as_deref().unwrap().contains("quick"));
     }
 
     #[test]

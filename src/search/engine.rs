@@ -1,8 +1,8 @@
 use crate::core::item::Item;
-use crate::core::searchable_item::{SearchableItem, SearchField};
+use crate::core::searchable_item::{SearchField, SearchableItem};
+use crate::matcher::fuzzy::FuzzyMatcher;
 use crate::search::tokenizer::Tokenizer;
 use crate::search::typo::TypoTolerance;
-use crate::matcher::fuzzy::FuzzyMatcher;
 
 pub struct SearchEngine {
     tokenizer: Tokenizer,
@@ -39,7 +39,7 @@ impl SearchEngine {
 
         let q = query.to_lowercase();
         let query_tokens = self.tokenizer.tokenize(&q);
-        
+
         let mut scored_items: Vec<(usize, f64)> = Vec::new();
 
         for (idx, searchable) in items.iter().enumerate() {
@@ -67,20 +67,21 @@ impl SearchEngine {
         }
 
         scored_items.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-        
-        scored_items.into_iter()
+
+        scored_items
+            .into_iter()
             .map(|(idx, score)| (items[idx].item.clone(), score))
             .collect()
     }
 
     fn score_field(&mut self, query: &str, query_tokens: &[String], field: &SearchField) -> f64 {
         let field_text = field.text.to_lowercase();
-        
+
         // Exact match
         if field_text == query {
             return 1000.0;
         }
-        
+
         // Prefix match
         if field_text.starts_with(query) {
             return 500.0;
@@ -88,7 +89,7 @@ impl SearchEngine {
 
         // Token-based matching
         let mut score = 0.0;
-        
+
         // Check if query matches any token exactly
         if field.tokens.iter().any(|t| t == query) {
             score = 400.0;
@@ -98,19 +99,22 @@ impl SearchEngine {
             score = 350.0;
         }
         // Word boundary match
-        else if field_text.split_whitespace().any(|word| word.starts_with(query)) {
+        else if field_text
+            .split_whitespace()
+            .any(|word| word.starts_with(query))
+        {
             score = 300.0;
         }
         // Multi-token match
         else if !query_tokens.is_empty() {
-            let all_match = query_tokens.iter().all(|qt| {
-                field.tokens.iter().any(|ft| ft.contains(qt))
-            });
+            let all_match = query_tokens
+                .iter()
+                .all(|qt| field.tokens.iter().any(|ft| ft.contains(qt)));
             if all_match {
                 score = 250.0;
             }
         }
-        
+
         // Typo tolerance
         if score == 0.0 {
             if let Some(typo_score) = self.typo_tolerance.score(query, &field_text) {
@@ -123,12 +127,12 @@ impl SearchEngine {
                 }
             }
         }
-        
+
         // Substring match
         if score == 0.0 && field_text.contains(query) {
             score = 100.0;
         }
-        
+
         // Fuzzy match
         if score == 0.0 {
             let results = self.fuzzy_matcher.filter(query, &[&field_text]);

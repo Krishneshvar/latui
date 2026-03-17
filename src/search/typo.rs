@@ -1,8 +1,6 @@
 use lru::LruCache;
-use std::cell::{RefCell, Cell};
+use std::cell::{Cell, RefCell};
 use std::num::NonZeroUsize;
-
-
 
 /// Advanced typo tolerance using multiple edit distance algorithms
 /// Handles common typing mistakes: transpositions, insertions, deletions, substitutions
@@ -30,8 +28,6 @@ impl TypoTolerance {
             misses: Cell::new(0),
         }
     }
-    
-
 
     /// Calculate Levenshtein distance between two strings
     /// Handles: insertions, deletions, substitutions
@@ -55,21 +51,25 @@ impl TypoTolerance {
 
         for i in 1..=len1 {
             curr_row[0] = i;
-            
+
             for j in 1..=len2 {
-                let cost = if s1_chars[i - 1] == s2_chars[j - 1] { 0 } else { 1 };
-                
-                curr_row[j] = (prev_row[j] + 1)           // deletion
-                    .min(curr_row[j - 1] + 1)              // insertion
-                    .min(prev_row[j - 1] + cost);          // substitution
+                let cost = if s1_chars[i - 1] == s2_chars[j - 1] {
+                    0
+                } else {
+                    1
+                };
+
+                curr_row[j] = (prev_row[j] + 1) // deletion
+                    .min(curr_row[j - 1] + 1) // insertion
+                    .min(prev_row[j - 1] + cost); // substitution
             }
-            
+
             std::mem::swap(&mut prev_row, &mut curr_row);
         }
 
         prev_row[len2]
     }
-    
+
     /// Calculate Damerau-Levenshtein distance
     /// Handles: insertions, deletions, substitutions, AND transpositions
     /// Transposition: "teh" → "the" (distance: 1 instead of 2)
@@ -86,7 +86,7 @@ impl TypoTolerance {
 
         let s1_chars: Vec<char> = s1.chars().collect();
         let s2_chars: Vec<char> = s2.chars().collect();
-        
+
         let mut matrix = vec![vec![0; len2 + 1]; len1 + 1];
 
         for (i, row) in matrix.iter_mut().enumerate().take(len1 + 1) {
@@ -98,16 +98,22 @@ impl TypoTolerance {
 
         for i in 1..=len1 {
             for j in 1..=len2 {
-                let cost = if s1_chars[i - 1] == s2_chars[j - 1] { 0 } else { 1 };
-                
-                matrix[i][j] = (matrix[i - 1][j] + 1)           // deletion
-                    .min(matrix[i][j - 1] + 1)                   // insertion
-                    .min(matrix[i - 1][j - 1] + cost);           // substitution
-                
+                let cost = if s1_chars[i - 1] == s2_chars[j - 1] {
+                    0
+                } else {
+                    1
+                };
+
+                matrix[i][j] = (matrix[i - 1][j] + 1) // deletion
+                    .min(matrix[i][j - 1] + 1) // insertion
+                    .min(matrix[i - 1][j - 1] + cost); // substitution
+
                 // Transposition
-                if i > 1 && j > 1 
-                    && s1_chars[i - 1] == s2_chars[j - 2] 
-                    && s1_chars[i - 2] == s2_chars[j - 1] {
+                if i > 1
+                    && j > 1
+                    && s1_chars[i - 1] == s2_chars[j - 2]
+                    && s1_chars[i - 2] == s2_chars[j - 1]
+                {
                     matrix[i][j] = matrix[i][j].min(matrix[i - 2][j - 2] + 1);
                 }
             }
@@ -115,7 +121,7 @@ impl TypoTolerance {
 
         matrix[len1][len2]
     }
-    
+
     /// Calculate edit distance with caching
     /// Note: Unicode grapheme clusters are not fully handled. The distance is calculated
     /// based on Rust's `chars()` (Unicode scalar values), which may treat some single
@@ -127,21 +133,19 @@ impl TypoTolerance {
             self.hits.set(self.hits.get() + 1);
             return dist;
         }
-        
+
         self.misses.set(self.misses.get() + 1);
-        
+
         let distance = if self.use_damerau {
             self.damerau_levenshtein_distance(s1, s2)
         } else {
             self.levenshtein_distance(s1, s2)
         };
-        
+
         // Cache the result
         self.cache.borrow_mut().put(key, distance);
         distance
     }
-    
-
 
     /// Score based on typo tolerance
     /// Returns None if query is too short or distance is too large
@@ -150,7 +154,7 @@ impl TypoTolerance {
         if query.len() < self.min_query_length {
             return None;
         }
-        
+
         // Skip if target is much longer (unlikely to be a typo)
         let len_diff = (query.len() as i32 - target.len() as i32).unsigned_abs() as usize;
         if len_diff > self.max_distance {
@@ -161,17 +165,15 @@ impl TypoTolerance {
 
         if distance <= self.max_distance {
             Some(match distance {
-                0 => 1000.0,  // Exact match
-                1 => 150.0,   // One typo
-                2 => 100.0,   // Two typos
+                0 => 1000.0, // Exact match
+                1 => 150.0,  // One typo
+                2 => 100.0,  // Two typos
                 _ => 0.0,
             })
         } else {
             None
         }
     }
-    
-
 }
 
 impl Default for TypoTolerance {
@@ -179,5 +181,3 @@ impl Default for TypoTolerance {
         Self::new()
     }
 }
-
-

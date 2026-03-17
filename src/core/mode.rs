@@ -15,9 +15,15 @@ pub trait Mode {
     ///
     /// - `false` (default): exit immediately after launch (Apps, Run, Files).
     /// - `true`: stay open so the user can pick again (Clipboard, Emojis).
-    fn stays_open(&self) -> bool { false }
+    fn stays_open(&self) -> bool {
+        false
+    }
 
     // Support for interactive previews
-    fn supports_preview(&self) -> bool { false }
-    fn preview(&self, _item: &Item) -> Option<String> { None }
+    fn supports_preview(&self) -> bool {
+        false
+    }
+    fn preview(&self, _item: &Item) -> Option<String> {
+        None
+    }
 }

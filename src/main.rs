@@ -1,37 +1,33 @@
 use latui::app::state::AppState;
-use latui::modes::{
-    apps::AppsMode,
-    run::RunMode,
-    files::FilesMode,
-    clipboard::ClipboardMode,
-    emojis::EmojisMode,
-};
-use latui::tracking::frequency::FrequencyTracker;
 use latui::config::keywords::KeywordMapper;
 use latui::config::loader::load_user_config_path;
+use latui::config::settings::load_user_settings;
+use latui::modes::{
+    apps::AppsMode, clipboard::ClipboardMode, emojis::EmojisMode, files::FilesMode, run::RunMode,
+};
+use latui::tracking::frequency::FrequencyTracker;
 use std::fs;
 
-use tracing::{info, error, debug, Level};
+use tracing::{Level, debug, error, info};
 use tracing_appender::rolling;
 use xdg::BaseDirectories;
 
 use std::io;
 
-
 use crossterm::{
     execute,
-    terminal::{enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, enable_raw_mode},
 };
 
-use ratatui::{
-    backend::CrosstermBackend,
-    Terminal,
-};
+use ratatui::{Terminal, backend::CrosstermBackend};
 
 fn init_tracing() -> anyhow::Result<tracing_appender::non_blocking::WorkerGuard> {
     let xdg = BaseDirectories::with_prefix("latui");
     let log_dir = xdg.place_state_file("logs")?;
-    let file_appender = rolling::daily(log_dir.parent().unwrap_or(std::path::Path::new("/tmp")), "latui.log");
+    let file_appender = rolling::daily(
+        log_dir.parent().unwrap_or(std::path::Path::new("/tmp")),
+        "latui.log",
+    );
     let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
 
     tracing_subscriber::fmt()
@@ -51,7 +47,7 @@ fn secure_permissions(path: &std::path::Path) {
 
 fn main() -> anyhow::Result<()> {
     let xdg = BaseDirectories::with_prefix("latui");
-    
+
     // Ensure core directories exist and are secure
     if let Ok(data_dir) = xdg.create_data_directory("") {
         #[cfg(unix)]
@@ -62,7 +58,8 @@ fn main() -> anyhow::Result<()> {
         secure_permissions(&state_dir);
     }
 
-    let _guard = init_tracing().map_err(|e| anyhow::anyhow!("Failed to initialize logging: {}", e))?;
+    let _guard =
+        init_tracing().map_err(|e| anyhow::anyhow!("Failed to initialize logging: {}", e))?;
     info!("Starting Latui launcher...");
 
     let res = run_app();
@@ -79,7 +76,7 @@ fn main() -> anyhow::Result<()> {
         error!("Fatal application error recorded: {:?}", err);
         return Err(err);
     }
-    
+
     info!("Latui launcher successfully shut down.");
     Ok(())
 }
@@ -94,22 +91,21 @@ fn run_app() -> anyhow::Result<()> {
     let mut terminal = Terminal::new(backend)?;
 
     let mut app = AppState::new();
-    
+    app.detect_image_support();
+
     // Initialize common components
     let xdg = BaseDirectories::with_prefix("latui");
     let frequency_tracker = match xdg.place_data_file("usage.db") {
-        Ok(db_path) => {
-            match FrequencyTracker::new(&db_path) {
-                Ok(mut tracker) => {
-                    let _ = tracker.cleanup(30);
-                    Some(tracker)
-                }
-                Err(e) => {
-                    error!("Failed to initialize usage tracker: {}", e);
-                    None
-                }
+        Ok(db_path) => match FrequencyTracker::new(&db_path) {
+            Ok(mut tracker) => {
+                let _ = tracker.cleanup(30);
+                Some(tracker)
             }
-        }
+            Err(e) => {
+                error!("Failed to initialize usage tracker: {}", e);
+                None
+            }
+        },
         Err(e) => {
             error!("Failed to generate usage tracking path: {}", e);
             None
@@ -119,18 +115,33 @@ fn run_app() -> anyhow::Result<()> {
     let mut keyword_mapper = KeywordMapper::with_defaults();
     if let Some(path) = load_user_config_path()
         && let Ok(content) = fs::read_to_string(&path)
-            && let Ok(custom_mapper) = KeywordMapper::from_toml(&content) {
-                keyword_mapper = custom_mapper;
-                info!("Loaded custom keywords from {:?}", path);
-            }
+        && let Ok(custom_mapper) = KeywordMapper::from_toml(&content)
+    {
+        keyword_mapper = custom_mapper;
+        info!("Loaded custom keywords from {:?}", path);
+    }
+
+    let apps_settings = load_user_settings()
+        .map(|cfg| cfg.modes.apps)
+        .unwrap_or_default();
 
     // Register built-in modes with injected dependencies
-    app.mode_registry.register("apps", Box::new(AppsMode::new(frequency_tracker, keyword_mapper)));
+    app.mode_registry.register(
+        "apps",
+        Box::new(AppsMode::new(
+            frequency_tracker,
+            keyword_mapper,
+            apps_settings,
+        )),
+    );
     app.mode_registry.register("run", Box::new(RunMode::new()));
-    app.mode_registry.register("files", Box::new(FilesMode::new()));
-    app.mode_registry.register("clipboard", Box::new(ClipboardMode::new()));
-    app.mode_registry.register("emojis", Box::new(EmojisMode::new()));
-    
+    app.mode_registry
+        .register("files", Box::new(FilesMode::new()));
+    app.mode_registry
+        .register("clipboard", Box::new(ClipboardMode::new()));
+    app.mode_registry
+        .register("emojis", Box::new(EmojisMode::new()));
+
     // Load all registered modes
     info!("Initializing modes...");
     for mode_name in app.mode_registry.get_mode_order().to_vec() {
@@ -138,7 +149,7 @@ fn run_app() -> anyhow::Result<()> {
             error!("Failed to switch to mode '{}': {}", mode_name, e);
             continue;
         }
-        
+
         if let Some(mode) = app.mode_registry.get_active_mode_mut() {
             debug!("Loading mode: {}", mode.name());
             if let Err(e) = mode.load() {
@@ -146,7 +157,7 @@ fn run_app() -> anyhow::Result<()> {
             }
         }
     }
-    
+
     // Switch back to default mode and initial search
     let default_mode = app.mode_registry.default_mode.clone();
     app.mode_registry.switch_mode(&default_mode)?;

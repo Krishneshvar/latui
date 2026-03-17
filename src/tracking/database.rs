@@ -1,7 +1,7 @@
 use rusqlite::Connection;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tracing::{info, debug, trace, instrument};
+use tracing::{debug, info, instrument, trace};
 
 #[derive(Debug, thiserror::Error)]
 pub enum DatabaseError {
@@ -58,11 +58,11 @@ impl Database {
             [],
         )?;
 
-        let version: i64 = tx.query_row(
-            "SELECT MAX(version) FROM schema_version",
-            [],
-            |row| row.get(0),
-        ).unwrap_or(0);
+        let version: i64 = tx
+            .query_row("SELECT MAX(version) FROM schema_version", [], |row| {
+                row.get(0)
+            })
+            .unwrap_or(0);
 
         trace!("Current database schema version: {}", version);
 
@@ -101,7 +101,7 @@ impl Database {
                 "CREATE INDEX IF NOT EXISTS idx_timestamp ON query_selections(timestamp)",
                 [],
             )?;
-            
+
             tx.execute("INSERT INTO schema_version (version) VALUES (1)", [])?;
         }
 
@@ -114,7 +114,9 @@ impl Database {
     #[instrument(skip(self))]
     pub fn record_launch(&mut self, app_id: &str) -> Result<(), DatabaseError> {
         if app_id.is_empty() || app_id.len() > 1024 {
-            return Err(DatabaseError::ValidationError("Invalid app_id length".into()));
+            return Err(DatabaseError::ValidationError(
+                "Invalid app_id length".into(),
+            ));
         }
         let now = current_timestamp();
 
@@ -128,7 +130,10 @@ impl Database {
             rusqlite::params![app_id, now as i64],
         )?;
         tx.commit()?;
-        debug!("Recorded launch tracking metric successfully for '{}'", app_id);
+        debug!(
+            "Recorded launch tracking metric successfully for '{}'",
+            app_id
+        );
 
         Ok(())
     }
@@ -137,7 +142,9 @@ impl Database {
     #[instrument(skip(self))]
     pub fn record_selection(&mut self, query: &str, app_id: &str) -> Result<(), DatabaseError> {
         if app_id.is_empty() || app_id.len() > 1024 {
-            return Err(DatabaseError::ValidationError("Invalid app_id length".into()));
+            return Err(DatabaseError::ValidationError(
+                "Invalid app_id length".into(),
+            ));
         }
         if query.len() > 256 {
             return Err(DatabaseError::ValidationError("Query too long".into()));
@@ -151,7 +158,10 @@ impl Database {
             rusqlite::params![query, app_id, now as i64],
         )?;
         tx.commit()?;
-        trace!("Recorded selection tracking dynamically query '{}' => app_id '{}'", query, app_id);
+        trace!(
+            "Recorded selection tracking dynamically query '{}' => app_id '{}'",
+            query, app_id
+        );
 
         Ok(())
     }
@@ -162,8 +172,7 @@ impl Database {
             .conn
             .prepare("SELECT launch_count, last_used FROM usage_stats WHERE app_id = ?1")?;
 
-        let mut rows = stmt
-            .query(rusqlite::params![app_id])?;
+        let mut rows = stmt.query(rusqlite::params![app_id])?;
 
         if let Some(row) = rows.next()? {
             Ok(Some(UsageStats {
@@ -177,21 +186,18 @@ impl Database {
 
     /// Get query selection statistics
     pub fn get_query_stats(&self, query: &str) -> Result<Vec<(String, u32)>, DatabaseError> {
-        let mut stmt = self
-            .conn
-            .prepare(
-                "SELECT app_id, COUNT(*) as count
+        let mut stmt = self.conn.prepare(
+            "SELECT app_id, COUNT(*) as count
                  FROM query_selections
                  WHERE query = ?1
                  GROUP BY app_id
                  ORDER BY count DESC
                  LIMIT 10",
-            )?;
+        )?;
 
-        let rows = stmt
-            .query_map(rusqlite::params![query], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, u32>(1)?))
-            })?;
+        let rows = stmt.query_map(rusqlite::params![query], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, u32>(1)?))
+        })?;
 
         let mut results = Vec::new();
         for row in rows {
@@ -205,7 +211,10 @@ impl Database {
     #[instrument(skip(self))]
     pub fn cleanup_old_selections(&mut self, days_old: u64) -> Result<(), DatabaseError> {
         let expiration_time = current_timestamp() - (days_old * 24 * 3600);
-        info!("Executing database retention cleanup for items older than {} days", days_old);
+        info!(
+            "Executing database retention cleanup for items older than {} days",
+            days_old
+        );
 
         let tx = self.conn.transaction()?;
         let rows_deleted = tx.execute(
@@ -213,13 +222,14 @@ impl Database {
             rusqlite::params![expiration_time as i64],
         )?;
         tx.commit()?;
-        
-        debug!("Database cleanup complete. {} old records purged.", rows_deleted);
+
+        debug!(
+            "Database cleanup complete. {} old records purged.",
+            rows_deleted
+        );
 
         Ok(())
     }
-
-
 }
 
 /// Usage statistics for an app
@@ -236,5 +246,3 @@ fn current_timestamp() -> u64 {
         .unwrap()
         .as_secs()
 }
-
-

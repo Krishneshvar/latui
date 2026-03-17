@@ -38,6 +38,8 @@ LaTUI is organized into specialized **Modes**, each optimized for specific tasks
 ### Apps Mode (Launcher)
 The core launcher experience. Index your `.desktop` files with keyword-aware search (e.g., search "browser" for Firefox). Features all-time frequency and recency boosting.
 
+Apps mode also supports real icon-image rendering in terminals that expose image protocols (Kitty graphics / Sixel). In practice this means terminals like `kitty` and `foot` (with sixel enabled) can render app icon images; other terminals automatically fall back to text icons.
+
 ### Files Mode (Navigator)
 Search and navigate your filesystem at lightning speeds. Uses the high-performance `ignore` crate for traversal and includes **text file previews**.
 
@@ -97,8 +99,25 @@ execute = "Enter"
 cancel = "Esc"
 
 [modes.apps]
+desktop_dirs = [
+  "~/.local/share/applications",
+  "/usr/local/share/applications",
+  "/usr/share/applications"
+]
+include = []
+exclude = []
+skip_terminal_apps = false
+
+[modes.apps.icons]
 enabled = true
-cache_ttl = 3600
+theme = "Papirus-Dark"
+size = 24
+scale = 1
+prefer_svg = false
+render_mode = "thumbnail" # "thumbnail" (icon-derived) | "icon_name"
+fallback = "📦"
+include = []
+exclude = []
 
 [modes.files]
 base_path = "~/"

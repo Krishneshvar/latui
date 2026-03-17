@@ -2,16 +2,16 @@
 pub enum LatuiError {
     #[error("Database error: {0}")]
     Database(#[from] crate::tracking::database::DatabaseError),
-    
+
     #[error("Cache error: {0}")]
     Cache(#[from] CacheError),
 
     #[error("Search error: {0}")]
     Search(String),
-    
+
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
-    
+
     #[error("Application error: {0}")]
     App(String),
 }

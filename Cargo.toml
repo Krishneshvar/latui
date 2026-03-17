@@ -27,6 +27,9 @@ walkdir = "2.5.0"
 xdg = "3.0.0"
 
 freedesktop-desktop-entry = "0.8.1"
+freedesktop-icons = "0.4.0"
+image = { version = "0.25.8", default-features = false, features = ["png", "jpeg", "gif", "ico", "bmp", "webp"] }
+ratatui-image = { version = "10.0.6", default-features = false, features = ["crossterm"] }
 
 serde_json = "1.0.149"
 

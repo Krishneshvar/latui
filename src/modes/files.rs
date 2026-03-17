@@ -157,7 +157,6 @@ impl FilesMode {
             .place_data_file("files_recents.json")
             .map_err(std::io::Error::other)?;
 
-
         self.recents_path = Some(path.clone());
 
         // Secure the parent directory on Unix.
@@ -166,10 +165,7 @@ impl FilesMode {
             use std::os::unix::fs::PermissionsExt;
             if let Some(parent) = path.parent() {
                 let _ = std::fs::create_dir_all(parent);
-                let _ = std::fs::set_permissions(
-                    parent,
-                    std::fs::Permissions::from_mode(0o700),
-                );
+                let _ = std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o700));
             }
         }
 
@@ -191,10 +187,7 @@ impl FilesMode {
                         entries.retain(|e| Path::new(&e.path).exists());
                         entries.truncate(MAX_RECENTS);
                         self.recents = entries.into();
-                        tracing::info!(
-                            "Loaded {} recent files",
-                            self.recents.len()
-                        );
+                        tracing::info!("Loaded {} recent files", self.recents.len());
                     }
                     Err(e) => {
                         tracing::warn!("Failed to parse files recents: {}", e);
@@ -232,10 +225,7 @@ impl FilesMode {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            let _ = std::fs::set_permissions(
-                &tmp_path,
-                std::fs::Permissions::from_mode(0o600),
-            );
+            let _ = std::fs::set_permissions(&tmp_path, std::fs::Permissions::from_mode(0o600));
         }
 
         std::fs::rename(&tmp_path, &path)?;
@@ -294,8 +284,7 @@ impl FilesMode {
                     path: entry.path.clone(),
                     kind: kind.clone(),
                 };
-                let meta_json =
-                    serde_json::to_string(&meta).unwrap_or_default();
+                let meta_json = serde_json::to_string(&meta).unwrap_or_default();
 
                 let item = Item {
                     id: format!("file:{}", entry.path),
@@ -344,8 +333,7 @@ impl FilesMode {
                     path: entry.path.clone(),
                     kind: kind.clone(),
                 };
-                let meta_json =
-                    serde_json::to_string(&meta).unwrap_or_default();
+                let meta_json = serde_json::to_string(&meta).unwrap_or_default();
 
                 let item = Item {
                     id: format!("file:{}", entry.path),
@@ -363,9 +351,7 @@ impl FilesMode {
             })
             .collect();
 
-        scored.sort_by(|a, b| {
-            b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal)
-        });
+        scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
         scored.into_iter().map(|(item, _)| item).collect()
     }
@@ -395,13 +381,7 @@ impl FilesMode {
                 .filter_map(|e| e.ok())
                 // Skip hidden directories (names starting with '.'), except
                 // the root itself.
-                .filter(|e| {
-                    e.depth() == 0
-                        || !e
-                            .file_name()
-                            .to_string_lossy()
-                            .starts_with('.')
-                })
+                .filter(|e| e.depth() == 0 || !e.file_name().to_string_lossy().starts_with('.'))
             {
                 let path = entry.path();
 
@@ -439,8 +419,7 @@ impl FilesMode {
                     path: path.to_string_lossy().to_string(),
                     kind: kind.clone(),
                 };
-                let meta_json =
-                    serde_json::to_string(&meta).unwrap_or_default();
+                let meta_json = serde_json::to_string(&meta).unwrap_or_default();
 
                 let item = Item {
                     id: format!("file:{}", path.display()),
@@ -463,9 +442,7 @@ impl FilesMode {
             }
         }
 
-        results.sort_by(|a, b| {
-            b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal)
-        });
+        results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
         results
     }
@@ -481,17 +458,12 @@ impl FilesMode {
             return Err(LatuiError::App("Path too long".to_string()));
         }
         if path.contains('\0') {
-            return Err(LatuiError::App(
-                "Path contains null bytes".to_string(),
-            ));
+            return Err(LatuiError::App("Path contains null bytes".to_string()));
         }
 
         let pb = PathBuf::from(path);
         if !pb.exists() {
-            return Err(LatuiError::App(format!(
-                "Path does not exist: {}",
-                path
-            )));
+            return Err(LatuiError::App(format!("Path does not exist: {}", path)));
         }
 
         Ok(pb)
@@ -548,10 +520,7 @@ impl Mode for FilesMode {
     // ── load ──────────────────────────────────────────────────────────────
 
     fn load(&mut self) -> Result<(), LatuiError> {
-        tracing::debug!(
-            "Loading files mode with roots: {:?}",
-            self.search_roots
-        );
+        tracing::debug!("Loading files mode with roots: {:?}", self.search_roots);
 
         self.load_recents()?;
         self.rebuild_searchable_recents();
@@ -584,14 +553,14 @@ impl Mode for FilesMode {
         }
 
         let q = query.trim();
-        let mut seen_ids: std::collections::HashSet<String> =
-            std::collections::HashSet::new();
+        let mut seen_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
         let mut merged: Vec<(Item, f64)> = Vec::new();
 
         // 1. Fuzzy-search within recents (fast, always done).
         if !self.searchable_recents.is_empty() {
-            let recents_hits =
-                self.search_engine.search_scored(q, &self.searchable_recents);
+            let recents_hits = self
+                .search_engine
+                .search_scored(q, &self.searchable_recents);
 
             for (item, score) in recents_hits {
                 if score > 0.0 {
@@ -615,9 +584,7 @@ impl Mode for FilesMode {
         }
 
         // Sort merged results by score (descending).
-        merged.sort_by(|a, b| {
-            b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal)
-        });
+        merged.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
         let results: Vec<Item> = merged
             .into_iter()
@@ -640,13 +607,11 @@ impl Mode for FilesMode {
     fn execute(&mut self, item: &Item) -> Result<(), LatuiError> {
         // Rate-limit: prevent double-opens from accidental key bounces.
         if let Some(last) = self.last_action_time
-            && last.elapsed() < std::time::Duration::from_millis(500) {
-                tracing::warn!(
-                    "Rate-limiting file open for: {}",
-                    item.title
-                );
-                return Ok(());
-            }
+            && last.elapsed() < std::time::Duration::from_millis(500)
+        {
+            tracing::warn!("Rate-limiting file open for: {}", item.title);
+            return Ok(());
+        }
         self.last_action_time = Some(Instant::now());
 
         // Parse metadata JSON.
@@ -655,9 +620,8 @@ impl Mode for FilesMode {
             .as_ref()
             .ok_or_else(|| LatuiError::App("Missing file metadata".to_string()))?;
 
-        let meta: FileMetadata = serde_json::from_str(meta_json).map_err(|e| {
-            LatuiError::App(format!("Corrupt file metadata: {}", e))
-        })?;
+        let meta: FileMetadata = serde_json::from_str(meta_json)
+            .map_err(|e| LatuiError::App(format!("Corrupt file metadata: {}", e)))?;
 
         // Validate path (existence, length, null-bytes).
         let path = Self::validate_path(&meta.path)?;
@@ -680,11 +644,7 @@ impl Mode for FilesMode {
                 Ok(())
             }
             Err(e) => {
-                tracing::error!(
-                    "Failed to open '{}' with xdg-open: {}",
-                    path.display(),
-                    e
-                );
+                tracing::error!("Failed to open '{}' with xdg-open: {}", path.display(), e);
                 Err(LatuiError::Io(e))
             }
         }
@@ -695,17 +655,19 @@ impl Mode for FilesMode {
     fn record_selection(&mut self, _query: &str, item: &Item) {
         // Rate-limit cursor-movement tracking.
         if let Some(last) = self.last_action_time
-            && last.elapsed() < std::time::Duration::from_millis(200) {
-                return;
-            }
+            && last.elapsed() < std::time::Duration::from_millis(200)
+        {
+            return;
+        }
         self.last_action_time = Some(Instant::now());
 
         // Extract path from metadata for lightweight logging — we don't add
         // to recents here because the user hasn't opened the file yet.
         if let Some(meta_json) = &item.metadata
-            && let Ok(meta) = serde_json::from_str::<FileMetadata>(meta_json) {
-                tracing::trace!("Files mode selection: {}", meta.path);
-            }
+            && let Ok(meta) = serde_json::from_str::<FileMetadata>(meta_json)
+        {
+            tracing::trace!("Files mode selection: {}", meta.path);
+        }
     }
 
     // ── preview ───────────────────────────────────────────────────────────
@@ -759,9 +721,10 @@ impl Mode for FilesMode {
 impl Drop for FilesMode {
     fn drop(&mut self) {
         if self.dirty
-            && let Err(e) = self.save_recents() {
-                tracing::error!("Failed to save recents on drop: {}", e);
-            }
+            && let Err(e) = self.save_recents()
+        {
+            tracing::error!("Failed to save recents on drop: {}", e);
+        }
     }
 }
 

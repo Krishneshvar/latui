@@ -1,6 +1,6 @@
-use std::collections::HashMap;
 use crate::core::mode::Mode;
 use crate::error::LatuiError;
+use std::collections::HashMap;
 
 /// Central registry for managing all available modes in the application.
 /// Handles mode registration, switching, and access to active modes.
@@ -25,7 +25,7 @@ impl ModeRegistry {
             mode_order: Vec::new(),
         }
     }
-    
+
     /// Registers a new mode with the given name.
     /// Modes are added to the navigation order in registration sequence.
     pub fn register(&mut self, name: &str, mode: Box<dyn Mode>) {
@@ -36,19 +36,23 @@ impl ModeRegistry {
         self.modes.insert(name.to_string(), mode);
         self.mode_order.push(name.to_string());
     }
-    
+
     /// Switches to the specified mode by name.
     /// Returns an error if the mode doesn't exist.
     pub fn switch_mode(&mut self, mode_name: &str) -> Result<(), LatuiError> {
         if self.modes.contains_key(mode_name) {
-            tracing::info!("Switching from '{}' to '{}' mode", self.active_mode, mode_name);
+            tracing::info!(
+                "Switching from '{}' to '{}' mode",
+                self.active_mode,
+                mode_name
+            );
             self.active_mode = mode_name.to_string();
             Ok(())
         } else {
             Err(LatuiError::App(format!("Mode '{}' not found", mode_name)))
         }
     }
-    
+
     /// Switches to the next mode in the registration order (circular).
     pub fn next_mode(&mut self) {
         if let Some(current_idx) = self.mode_order.iter().position(|m| m == &self.active_mode) {
@@ -57,7 +61,7 @@ impl ModeRegistry {
             let _ = self.switch_mode(&next_mode);
         }
     }
-    
+
     /// Switches to the previous mode in the registration order (circular).
     pub fn previous_mode(&mut self) {
         if let Some(current_idx) = self.mode_order.iter().position(|m| m == &self.active_mode) {
@@ -82,7 +86,7 @@ impl ModeRegistry {
         let mode = self.modes.get_mut(&self.active_mode)?;
         Some(mode.as_mut())
     }
-    
+
     /// Returns the index of the currently active mode in the mode order.
     /// Used for UI tab highlighting.
     pub fn get_active_index(&self) -> usize {
@@ -91,20 +95,20 @@ impl ModeRegistry {
             .position(|m| m == &self.active_mode)
             .unwrap_or(0)
     }
-    
+
     /// Returns a list of tab titles for UI rendering.
     /// Format: "icon name" (e.g., "🔥 apps")
     pub fn get_tab_titles(&self) -> Vec<String> {
         self.mode_order
             .iter()
             .filter_map(|name| {
-                self.modes.get(name).map(|mode| {
-                    format!("{} {}", mode.icon(), mode.name())
-                })
+                self.modes
+                    .get(name)
+                    .map(|mode| format!("{} {}", mode.icon(), mode.name()))
             })
             .collect()
     }
-    
+
     /// Returns the ordered list of mode names.
     pub fn get_mode_order(&self) -> &[String] {
         &self.mode_order

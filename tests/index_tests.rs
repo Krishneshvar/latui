@@ -1,5 +1,5 @@
-use latui::index::trie::{Trie, MultiTokenTrie};
 use latui::core::{item::Item, searchable_item::SearchableItem};
+use latui::index::trie::{MultiTokenTrie, Trie};
 
 fn create_test_item(name: &str, keywords: Vec<&str>, categories: Vec<&str>) -> SearchableItem {
     let item = Item {
@@ -7,40 +7,41 @@ fn create_test_item(name: &str, keywords: Vec<&str>, categories: Vec<&str>) -> S
         title: name.to_string(),
         search_text: name.to_lowercase(),
         description: None,
+        icon: None,
         metadata: None,
     };
 
     let mut searchable = SearchableItem::new(item);
     searchable = searchable.with_field("name", name, 10.0);
-    
+
     for kw in keywords {
         searchable = searchable.with_field("keyword", kw, 8.0);
     }
-    
+
     for cat in categories {
         searchable = searchable.with_field("category", cat, 5.0);
     }
-    
+
     searchable
 }
 
 #[test]
 fn test_basic_trie_insert_and_search() {
     let mut trie = Trie::new();
-    
+
     trie.insert("firefox", 0);
     trie.insert("chrome", 1);
     trie.insert("chromium", 2);
-    
+
     // Test exact prefix match
     let results = trie.search("fire");
     assert_eq!(results, vec![0]);
-    
+
     // Test prefix matching multiple items
     let results = trie.search("chro");
     assert!(results.contains(&1));
     assert!(results.contains(&2));
-    
+
     // Test no match
     let results = trie.search("xyz");
     assert!(results.is_empty());
@@ -49,18 +50,18 @@ fn test_basic_trie_insert_and_search() {
 #[test]
 fn test_trie_prefix_matching() {
     let mut trie = Trie::new();
-    
+
     trie.insert("firefox", 0);
     trie.insert("firewall", 1);
     trie.insert("fire", 2);
-    
+
     // All should match "fire"
     let results = trie.search("fire");
     assert_eq!(results.len(), 3);
     assert!(results.contains(&0));
     assert!(results.contains(&1));
     assert!(results.contains(&2));
-    
+
     // Only firefox should match "firef"
     let results = trie.search("firef");
     assert_eq!(results, vec![0]);
@@ -75,18 +76,18 @@ fn test_multi_token_trie_build() {
     ];
 
     let trie = MultiTokenTrie::build(&items);
-    
+
     // Test searching for "fire" (should match Firefox)
     let candidates = trie.get_candidates("fire");
     assert_eq!(candidates.len(), 1);
     assert_eq!(candidates[0], 0);
-    
+
     // Test searching for "browser" (should match Firefox and Chrome)
     let candidates = trie.get_candidates("browser");
     assert_eq!(candidates.len(), 2);
     assert!(candidates.contains(&0));
     assert!(candidates.contains(&1));
-    
+
     // Test searching for "files" (should match Thunar)
     let candidates = trie.get_candidates("files");
     assert_eq!(candidates.len(), 1);
@@ -102,7 +103,7 @@ fn test_multi_token_trie_acronyms() {
     ];
 
     let trie = MultiTokenTrie::build(&items);
-    
+
     // Test acronym search "gc" (should match Google Chrome and GNOME Calculator)
     let candidates = trie.get_candidates("gc");
     assert_eq!(candidates.len(), 2);
@@ -118,12 +119,12 @@ fn test_multi_token_trie_case_insensitive() {
     ];
 
     let trie = MultiTokenTrie::build(&items);
-    
+
     // Test lowercase search
     let candidates = trie.get_candidates("fire");
     assert_eq!(candidates.len(), 1);
     assert_eq!(candidates[0], 0);
-    
+
     // Test lowercase search for uppercase name
     let candidates = trie.get_candidates("gimp");
     assert_eq!(candidates.len(), 1);
@@ -139,11 +140,11 @@ fn test_multi_token_candidates_all_match() {
     ];
 
     let trie = MultiTokenTrie::build(&items);
-    
+
     // Test multi-token search where all tokens must match
     let tokens = vec!["fire".to_string(), "browser".to_string()];
     let candidates = trie.get_multi_token_candidates(&tokens);
-    
+
     // Only Firefox Browser should match (has both "fire" and "browser")
     assert_eq!(candidates.len(), 1);
     assert_eq!(candidates[0], 0);
@@ -158,11 +159,11 @@ fn test_multi_token_and_candidates() {
     ];
 
     let trie = MultiTokenTrie::build(&items);
-    
+
     // Test AND logic: all tokens must match
     let tokens = vec!["web".to_string(), "brow".to_string()];
     let candidates = trie.get_multi_token_candidates(&tokens);
-    
+
     // Should match Firefox (0) and Chrome (1)
     assert_eq!(candidates.len(), 2);
     assert!(candidates.contains(&0));
@@ -176,12 +177,10 @@ fn test_multi_token_and_candidates() {
 
 #[test]
 fn test_trie_empty_query() {
-    let items = vec![
-        create_test_item("Firefox", vec![], vec![]),
-    ];
+    let items = vec![create_test_item("Firefox", vec![], vec![])];
 
     let trie = MultiTokenTrie::build(&items);
-    
+
     // Empty query should return empty results
     let candidates = trie.get_candidates("");
     assert!(candidates.is_empty());
@@ -189,12 +188,10 @@ fn test_trie_empty_query() {
 
 #[test]
 fn test_trie_no_duplicates() {
-    let items = vec![
-        create_test_item("Firefox Browser", vec!["firefox"], vec![]),
-    ];
+    let items = vec![create_test_item("Firefox Browser", vec!["firefox"], vec![])];
 
     let trie = MultiTokenTrie::build(&items);
-    
+
     // "fire" matches both "firefox" token and "firefox" keyword
     // Should only return index once
     let candidates = trie.get_candidates("fire");
@@ -204,19 +201,17 @@ fn test_trie_no_duplicates() {
 
 #[test]
 fn test_trie_partial_token_match() {
-    let items = vec![
-        create_test_item("LibreOffice Writer", vec![], vec![]),
-    ];
+    let items = vec![create_test_item("LibreOffice Writer", vec![], vec![])];
 
     let trie = MultiTokenTrie::build(&items);
-    
+
     // Test partial matches
     let candidates = trie.get_candidates("lib");
     assert_eq!(candidates.len(), 1);
-    
+
     let candidates = trie.get_candidates("off");
     assert_eq!(candidates.len(), 1);
-    
+
     let candidates = trie.get_candidates("wri");
     assert_eq!(candidates.len(), 1);
 }
@@ -230,13 +225,13 @@ fn test_trie_category_matching() {
     ];
 
     let trie = MultiTokenTrie::build(&items);
-    
+
     // Test category search
     let candidates = trie.get_candidates("network");
     assert_eq!(candidates.len(), 2);
     assert!(candidates.contains(&0));
     assert!(candidates.contains(&1));
-    
+
     let candidates = trie.get_candidates("webbrowser");
     assert_eq!(candidates.len(), 1);
     assert_eq!(candidates[0], 0);
@@ -246,19 +241,15 @@ fn test_trie_category_matching() {
 fn test_trie_performance_many_items() {
     // Create 100 test items
     let items: Vec<SearchableItem> = (0..100)
-        .map(|i| create_test_item(
-            &format!("App{}", i),
-            vec!["test", "app"],
-            vec!["Utility"],
-        ))
+        .map(|i| create_test_item(&format!("App{}", i), vec!["test", "app"], vec!["Utility"]))
         .collect();
 
     let trie = MultiTokenTrie::build(&items);
-    
+
     // All items should match "app"
     let candidates = trie.get_candidates("app");
     assert_eq!(candidates.len(), 100);
-    
+
     // Specific item should match
     let candidates = trie.get_candidates("app42");
     assert_eq!(candidates.len(), 1);

@@ -1,18 +1,30 @@
 use std::fs;
 use std::path::PathBuf;
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 use crate::core::searchable_item::SearchableItem;
 
+pub const APPS_CACHE_SCHEMA_VERSION: u32 = 3;
+
 #[derive(Serialize, Deserialize)]
 pub struct CachedApps {
+    #[serde(default = "default_schema_version")]
+    pub schema_version: u32,
+    #[serde(default)]
+    pub built_at_unix: u64,
+    #[serde(default)]
+    pub cache_key: String,
     pub apps: Vec<SearchableItem>,
 }
 
-use xdg::BaseDirectories;
+fn default_schema_version() -> u32 {
+    APPS_CACHE_SCHEMA_VERSION
+}
+
 use crate::error::CacheError;
-use tracing::{info, debug, instrument};
+use tracing::{debug, info, instrument};
+use xdg::BaseDirectories;
 
 pub fn cache_path() -> Result<PathBuf, CacheError> {
     let xdg = BaseDirectories::with_prefix("latui");
@@ -21,10 +33,10 @@ pub fn cache_path() -> Result<PathBuf, CacheError> {
 }
 
 #[instrument]
-pub fn load_cache() -> Result<Vec<SearchableItem>, CacheError> {
+pub fn load_cache() -> Result<CachedApps, CacheError> {
     let path = cache_path()?;
     debug!("Attempting to load index cache from {:?}", path);
-    
+
     // Validation: Don't load massive cache files (> 10MB)
     let metadata = fs::metadata(&path)?;
     if metadata.len() > 10 * 1024 * 1024 {
@@ -35,20 +47,29 @@ pub fn load_cache() -> Result<Vec<SearchableItem>, CacheError> {
 
     let data = fs::read_to_string(&path)?;
     let cache: CachedApps = serde_json::from_str(&data)?;
-    info!("Successfully loaded {} items from cache payload", cache.apps.len());
-    Ok(cache.apps)
+    info!(
+        "Successfully loaded {} items from cache payload",
+        cache.apps.len()
+    );
+    Ok(cache)
 }
 
 #[instrument(skip(items))]
-pub fn save_cache(items: &[SearchableItem]) -> Result<(), CacheError> {
+pub fn save_cache(items: &[SearchableItem], cache_key: &str) -> Result<(), CacheError> {
     debug!("Serializing {} items to disk cache...", items.len());
     let cache = CachedApps {
+        schema_version: APPS_CACHE_SCHEMA_VERSION,
+        built_at_unix: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs(),
+        cache_key: cache_key.to_string(),
         apps: items.to_vec(),
     };
     let json = serde_json::to_string(&cache)?;
     let path = cache_path()?;
     fs::write(&path, json)?;
-    
+
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;

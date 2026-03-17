@@ -58,13 +58,13 @@ impl FrequencyTracker {
 
                 // Time-based boost with decay
                 match hours_since_use {
-                    0..=1 => 50.0,      // Used in last hour
-                    2..=6 => 40.0,      // Used in last 6 hours
-                    7..=24 => 30.0,     // Used today
-                    25..=72 => 20.0,    // Used in last 3 days
-                    73..=168 => 15.0,   // Used this week
-                    169..=720 => 10.0,  // Used this month
-                    _ => 0.0,           // Older than a month
+                    0..=1 => 50.0,     // Used in last hour
+                    2..=6 => 40.0,     // Used in last 6 hours
+                    7..=24 => 30.0,    // Used today
+                    25..=72 => 20.0,   // Used in last 3 days
+                    73..=168 => 15.0,  // Used this week
+                    169..=720 => 10.0, // Used this month
+                    _ => 0.0,          // Older than a month
                 }
             }
             _ => 0.0,
@@ -100,15 +100,13 @@ impl FrequencyTracker {
                 // Calculate percentage-based boost
                 // If user always selects this app for this query, give max boost
                 let percentage = (app_selections as f64 / total_selections as f64) * 100.0;
-                
+
                 // Scale: 0-100% → 0-50 points
                 (percentage / 2.0).min(50.0)
             }
             _ => 0.0,
         }
     }
-
-
 
     /// Cleanup old data
     pub fn cleanup(&mut self, days_old: u64) -> Result<(), DatabaseError> {
@@ -123,5 +121,3 @@ fn current_timestamp() -> u64 {
         .unwrap_or_default()
         .as_secs()
 }
-
-

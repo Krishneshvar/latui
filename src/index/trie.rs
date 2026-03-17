@@ -1,7 +1,7 @@
-use rustc_hash::{FxHashMap, FxHashSet};
 use crate::core::searchable_item::SearchableItem;
+use rustc_hash::{FxHashMap, FxHashSet};
 use std::time::Instant;
-use tracing::{info, debug};
+use tracing::{debug, info};
 
 pub const MAX_TRIE_WORD_LENGTH: usize = 32;
 
@@ -69,23 +69,28 @@ impl Default for MultiTokenTrie {
 
 impl MultiTokenTrie {
     pub fn new() -> Self {
-        Self {
-            trie: Trie::new(),
-        }
+        Self { trie: Trie::new() }
     }
 
     /// Build trie from searchable items
     pub fn build(items: &[SearchableItem]) -> Self {
-        debug!("Commencing MultiTokenTrie index building for {} items...", items.len());
+        debug!(
+            "Commencing MultiTokenTrie index building for {} items...",
+            items.len()
+        );
         let start_time = Instant::now();
         let mut trie = Self::new();
-        
+
         for (idx, item) in items.iter().enumerate() {
             trie.insert_item(item, idx);
         }
-        
-        info!("Built MultiTokenTrie search index with {} items in {:?}", items.len(), start_time.elapsed());
-        
+
+        info!(
+            "Built MultiTokenTrie search index with {} items in {:?}",
+            items.len(),
+            start_time.elapsed()
+        );
+
         trie
     }
 
@@ -99,7 +104,7 @@ impl MultiTokenTrie {
             // Also insert the full text lowercased (for exact/prefix matches)
             self.trie.insert(&field.text.to_lowercase(), index);
         }
-        
+
         // Insert acronyms
         for acronym in &item.acronyms {
             self.trie.insert(acronym, index);
@@ -112,12 +117,13 @@ impl MultiTokenTrie {
         if query.is_empty() {
             return Vec::new();
         }
-        
+
         let results = self.trie.search(query);
-        
+
         // Remove duplicates while preserving order
         let mut seen = FxHashSet::default();
-        results.into_iter()
+        results
+            .into_iter()
             .filter(|idx| seen.insert(*idx))
             .collect()
     }
@@ -128,36 +134,34 @@ impl MultiTokenTrie {
         if tokens.is_empty() {
             return Vec::new();
         }
-        
+
         // Optimize: Sort tokens by length (descending) assuming longer tokens are rarer
         // This helps the intersection process reduce search space faster
         let mut sorted_tokens: Vec<&String> = tokens.iter().collect();
         sorted_tokens.sort_by_key(|a| std::cmp::Reverse(a.len()));
-        
+
         // Get candidates for first token
-        let mut candidates: FxHashSet<usize> = self.get_candidates(sorted_tokens[0])
-            .into_iter()
-            .collect();
-        
+        let mut candidates: FxHashSet<usize> =
+            self.get_candidates(sorted_tokens[0]).into_iter().collect();
+
         // Intersect with candidates from other tokens
         for token in &sorted_tokens[1..] {
-            let token_candidates: FxHashSet<usize> = self.get_candidates(token)
-                .into_iter()
-                .collect();
-            
-            candidates = candidates.intersection(&token_candidates)
+            let token_candidates: FxHashSet<usize> =
+                self.get_candidates(token).into_iter().collect();
+
+            candidates = candidates
+                .intersection(&token_candidates)
                 .copied()
                 .collect();
-            
+
             // Early exit if no candidates remain
             if candidates.is_empty() {
                 return Vec::new();
             }
         }
-        
+
         let mut result: Vec<usize> = candidates.into_iter().collect();
         result.sort_unstable(); // Preserve stable visual tracking post-intersection
         result
     }
-    
 }

@@ -5,7 +5,15 @@ use std::path::PathBuf;
 
 fn temp_db_path(prefix: &str) -> PathBuf {
     let mut path = std::env::temp_dir();
-    path.push(format!("latui_{}_test_{}_{}.db", prefix, std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+    path.push(format!(
+        "latui_{}_test_{}_{}.db",
+        prefix,
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
     path
 }
 

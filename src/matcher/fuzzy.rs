@@ -1,8 +1,6 @@
 use nucleo_matcher::{
-    Matcher,
-    Config,
-    pattern::{Pattern, CaseMatching, Normalization},
-    Utf32Str,
+    Config, Matcher, Utf32Str,
+    pattern::{CaseMatching, Normalization, Pattern},
 };
 
 pub struct FuzzyMatcher {

@@ -1,11 +1,11 @@
 pub mod app;
-pub mod core;
-pub mod ui;
-pub mod modes;
 pub mod cache;
+pub mod config;
+pub mod core;
+pub mod error;
 pub mod index;
 pub mod matcher;
+pub mod modes;
 pub mod search;
-pub mod config;
 pub mod tracking;
-pub mod error;
+pub mod ui;

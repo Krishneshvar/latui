@@ -120,3 +120,29 @@ fn test_total_boost() {
 
     let _ = fs::remove_file(&path);
 }
+
+#[test]
+fn test_cleanup_old_selections() {
+    let path = temp_db_path("cleanup");
+    let mut db = Database::new(&path).unwrap();
+
+    db.record_selection("br", "brave").unwrap();
+    db.record_selection("br", "chromium").unwrap();
+
+    // Backdate one row so cleanup can deterministically remove it.
+    let conn = rusqlite::Connection::open(&path).unwrap();
+    conn.execute(
+        "UPDATE query_selections SET timestamp = 1 WHERE app_id = 'chromium'",
+        [],
+    )
+    .unwrap();
+
+    db.cleanup_old_selections(30).unwrap();
+    let stats = db.get_query_stats("br").unwrap();
+
+    assert_eq!(stats.len(), 1);
+    assert_eq!(stats[0].0, "brave");
+    assert_eq!(stats[0].1, 1);
+
+    let _ = fs::remove_file(&path);
+}

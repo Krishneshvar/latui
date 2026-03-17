@@ -9,7 +9,7 @@ use std::io;
 
 
 use crossterm::{
-    event::{self, Event, KeyCode},
+    event::{self, Event, KeyCode, KeyModifiers},
     execute,
     terminal::{enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -86,10 +86,30 @@ fn run_app() -> anyhow::Result<()> {
 
     let mut app = AppState::new();
     
-    // Initial load of the active mode
+    // Load all registered modes
+    info!("Initializing modes...");
+    let mode_names: Vec<String> = app.mode_registry.get_mode_order().to_vec();
+    for mode_name in &mode_names {
+        if let Err(e) = app.mode_registry.switch_mode(mode_name) {
+            error!("Failed to switch to mode '{}': {}", mode_name, e);
+            continue;
+        }
+        
+        if let Some(mode) = app.mode_registry.get_active_mode_mut() {
+            debug!("Loading mode: {} ({})", mode.name(), mode.description());
+            if let Err(e) = mode.load() {
+                error!("Failed to load mode '{}': {}", mode.name(), e);
+            }
+        }
+    }
+    
+    // Switch back to default mode
+    let default_mode = app.mode_registry.default_mode.clone();
+    app.mode_registry.switch_mode(&default_mode)?;
+    
+    // Initial search with empty query
     if let Some(mode) = app.mode_registry.get_active_mode_mut() {
-        debug!("Loading initial mode: {}", mode.name());
-        mode.load().map_err(|e| anyhow::anyhow!("Failed to load initial mode: {}", e))?;
+        debug!("Loading initial results for mode: {}", mode.name());
         app.filtered_items = mode.search("");
     }
     debug!("Initial items loaded: {}", app.filtered_items.len());
@@ -98,44 +118,73 @@ fn run_app() -> anyhow::Result<()> {
         terminal.draw(|f| ui::renderer::draw(f, &mut app))?;
 
         if let Event::Key(key) = event::read()? {
-            match key.code {
-                KeyCode::Char(c) => {
+            match (key.code, key.modifiers) {
+                // Character input
+                (KeyCode::Char(c), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
                     if is_valid_query_char(c) && app.query.len() < 128 {
                         app.query.push(c);
                         update_results(&mut app);
                     }
                 }
 
-                KeyCode::Backspace => {
+                // Backspace
+                (KeyCode::Backspace, _) => {
                     app.query.pop();
                     update_results(&mut app);
                 }
 
-                KeyCode::Down => {
+                // Navigation
+                (KeyCode::Down, _) => {
                     app.next();
                 }
 
-                KeyCode::Up => {
+                (KeyCode::Up, _) => {
                     app.previous();
                 }
 
-                KeyCode::Enter => {
+                // Mode switching
+                (KeyCode::Tab, KeyModifiers::NONE) => {
+                    app.mode_registry.next_mode();
+                    app.query.clear();
+                    update_results(&mut app);
+                    info!("Switched to mode: {}", app.mode_registry.active_mode);
+                }
+                
+                (KeyCode::BackTab, _) => {
+                    app.mode_registry.previous_mode();
+                    app.query.clear();
+                    update_results(&mut app);
+                    info!("Switched to mode: {}", app.mode_registry.active_mode);
+                }
+
+                // Execute selected item
+                (KeyCode::Enter, _) => {
                     if let Some(i) = app.list_state.selected() {
                         if let Some(item) = app.filtered_items.get(i).cloned() {
                             if let Some(mode) = app.mode_registry.get_active_mode_mut() {
-                                // Record the selection
-                                info!("Launching selected item: {}", item.title);
+                                info!("Executing item '{}' in mode '{}'", item.title, mode.name());
+                                
+                                // Record the selection for usage tracking
                                 mode.record_selection(&app.query, &item);
-                                // Execute the app
+                                
+                                // Execute the action
                                 if let Err(e) = mode.execute(&item) {
-                                    error!("Failed to execute item: {}", e);
+                                    error!("Failed to execute item '{}': {}", item.title, e);
+                                    // Continue running instead of crashing
+                                } else {
+                                    // Exit after successful execution
+                                    break;
                                 }
                             }
                         }
                     }
                 }
 
-                KeyCode::Esc => break,
+                // Exit
+                (KeyCode::Esc, _) => {
+                    info!("User requested exit via Esc");
+                    break;
+                }
 
                 _ => {}
             }
@@ -146,11 +195,14 @@ fn run_app() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Validates that a character is safe for search queries.
+/// Prevents injection attacks and ensures reasonable input.
 fn is_valid_query_char(c: char) -> bool {
     // Only allow safe characters for search
     c.is_alphanumeric() || c.is_whitespace() || "-_.$+!*'(),/".contains(c)
 }
 
+/// Updates search results based on current query and active mode.
 fn update_results(app: &mut AppState) {
     if let Some(mode) = app.mode_registry.get_active_mode_mut() {
         app.filtered_items = mode.search(&app.query);

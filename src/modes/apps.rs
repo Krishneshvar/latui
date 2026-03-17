@@ -505,6 +505,10 @@ impl Mode for AppsMode {
                     return Err(LatuiError::Io(e));
                 }
             }
+            _ => {
+                tracing::warn!("Apps mode received unsupported action type: {:?}", item.action);
+                return Err(LatuiError::App("Unsupported action type for Apps mode".to_string()));
+            }
         }
         Ok(())
     }

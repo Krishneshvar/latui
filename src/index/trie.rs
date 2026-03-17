@@ -79,57 +79,18 @@ impl MultiTokenTrie {
 
     /// Insert all tokens from an item into the trie
     pub fn insert_item(&mut self, item: &SearchableItem, index: usize) {
-        // Insert name tokens
-        for token in &item.name_tokens {
-            self.trie.insert(token, index);
-        }
-        
-        // Insert keyword tokens
-        for token in &item.keyword_tokens {
-            self.trie.insert(token, index);
-        }
-        
-        // Insert category tokens
-        for token in &item.category_tokens {
-            self.trie.insert(token, index);
-        }
-        
-        // Insert generic name tokens
-        for token in &item.generic_name_tokens {
-            self.trie.insert(token, index);
-        }
-        
-        // Insert description tokens
-        for token in &item.description_tokens {
-            self.trie.insert(token, index);
-        }
-        
-        // Insert executable tokens
-        for token in &item.executable_tokens {
-            self.trie.insert(token, index);
+        // Insert tokens from all fields
+        for field in &item.fields {
+            for token in &field.tokens {
+                self.trie.insert(token, index);
+            }
+            // Also insert the full text lowercased (for exact/prefix matches)
+            self.trie.insert(&field.text.to_lowercase(), index);
         }
         
         // Insert acronyms
         for acronym in &item.acronyms {
             self.trie.insert(acronym, index);
-        }
-        
-        // Also insert the full name and executable (lowercased)
-        self.trie.insert(&item.name.to_lowercase(), index);
-        self.trie.insert(&item.executable.to_lowercase(), index);
-        
-        // Insert keywords and categories as-is
-        for keyword in &item.keywords {
-            self.trie.insert(&keyword.to_lowercase(), index);
-        }
-        
-        for category in &item.categories {
-            self.trie.insert(&category.to_lowercase(), index);
-        }
-        
-        // Insert generic name if present
-        if let Some(ref generic) = item.generic_name {
-            self.trie.insert(&generic.to_lowercase(), index);
         }
     }
 

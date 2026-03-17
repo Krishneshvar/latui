@@ -1,7 +1,5 @@
 use serde::{Serialize, Deserialize};
 
-use crate::core::action::Action;
-
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Item {
     pub id: String,
@@ -11,5 +9,6 @@ pub struct Item {
 
     pub description: Option<String>,
 
-    pub action: Action,
+    /// Mode-specific metadata needed for execution
+    pub metadata: Option<String>,
 }

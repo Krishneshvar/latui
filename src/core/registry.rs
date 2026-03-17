@@ -1,11 +1,6 @@
 use std::collections::HashMap;
 use crate::core::mode::Mode;
 use crate::error::LatuiError;
-use crate::modes::apps::AppsMode;
-use crate::modes::run::RunMode;
-use crate::modes::files::FilesMode;
-use crate::modes::clipboard::ClipboardMode;
-use crate::modes::emojis::EmojisMode;
 
 /// Central registry for managing all available modes in the application.
 /// Handles mode registration, switching, and access to active modes.
@@ -21,29 +16,23 @@ pub struct ModeRegistry {
 }
 
 impl ModeRegistry {
-    /// Creates a new ModeRegistry with all built-in modes registered.
-    /// The default active mode is "apps".
+    /// Creates a new empty ModeRegistry.
     pub fn new() -> Self {
-        let mut registry = Self {
+        Self {
             modes: HashMap::new(),
-            active_mode: "apps".to_string(),
-            default_mode: "apps".to_string(),
+            active_mode: String::new(),
+            default_mode: String::new(),
             mode_order: Vec::new(),
-        };
-        
-        // Register built-in modes in display order
-        registry.register("apps", Box::new(AppsMode::new()));
-        registry.register("run", Box::new(RunMode::new()));
-        registry.register("files", Box::new(FilesMode::new()));
-        registry.register("clipboard", Box::new(ClipboardMode::new()));
-        registry.register("emojis", Box::new(EmojisMode::new()));
-        
-        registry
+        }
     }
     
     /// Registers a new mode with the given name.
     /// Modes are added to the navigation order in registration sequence.
     pub fn register(&mut self, name: &str, mode: Box<dyn Mode>) {
+        if self.modes.is_empty() {
+            self.active_mode = name.to_string();
+            self.default_mode = name.to_string();
+        }
         self.modes.insert(name.to_string(), mode);
         self.mode_order.push(name.to_string());
     }

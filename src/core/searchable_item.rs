@@ -1,5 +1,6 @@
 use serde::{Serialize, Deserialize};
 use crate::core::item::Item;
+use std::borrow::Cow;
 
 /// A searchable item with multiple indexed fields
 #[derive(Clone, Serialize, Deserialize)]
@@ -7,199 +8,75 @@ pub struct SearchableItem {
     /// The original item
     pub item: Item,
     
-    /// Indexed fields for searching (original text)
-    pub name: String,
-    pub keywords: Vec<String>,
-    pub categories: Vec<String>,
-    pub generic_name: Option<String>,
-    pub description: Option<String>,
-    pub executable: String,
-    
-    /// Tokenized versions for fast matching
-    pub name_tokens: Vec<String>,
-    pub keyword_tokens: Vec<String>,
-    pub category_tokens: Vec<String>,
-    pub generic_name_tokens: Vec<String>,
-    pub description_tokens: Vec<String>,
-    pub executable_tokens: Vec<String>,
+    /// Indexed fields for searching
+    pub fields: Vec<IndexedField>,
     
     /// Extracted acronyms
     pub acronyms: Vec<String>,
 }
 
+#[derive(Clone, Serialize, Deserialize)]
+pub struct IndexedField {
+    pub name: String,
+    pub text: String,
+    pub tokens: Vec<String>,
+    pub weight: f64,
+}
+
 impl SearchableItem {
-    /// Create a new searchable item with tokenization
-    pub fn new(
-        item: Item,
-        name: String,
-        keywords: Vec<String>,
-        categories: Vec<String>,
-        generic_name: Option<String>,
-        description: Option<String>,
-        executable: String,
-    ) -> Result<Self, crate::error::LatuiError> {
-        let name = sanitize_text(&name);
-        let executable = sanitize_text(&executable);
-        let description = description.map(|d| sanitize_text(&d));
-        let generic_name = generic_name.map(|gn| sanitize_text(&gn));
-        let keywords: Vec<String> = keywords.into_iter().map(|k| sanitize_text(&k)).collect();
-        let categories: Vec<String> = categories.into_iter().map(|c| sanitize_text(&c)).collect();
+    /// Create a new searchable item
+    pub fn new(item: Item) -> Self {
+        Self {
+            item,
+            fields: Vec::new(),
+            acronyms: Vec::new(),
+        }
+    }
 
-        // Update the inner item with sanitized values
-        let mut item = item;
-        item.title = name.clone();
-        item.description = description.clone();
-
-        if name.trim().is_empty() || name.len() > 256 {
-            return Err(crate::error::LatuiError::App("Invalid name length".to_string()));
-        }
-        if executable.trim().is_empty() || executable.len() > 1024 {
-            return Err(crate::error::LatuiError::App("Invalid executable length".to_string()));
-        }
-        if let Some(ref d) = description {
-            if d.len() > 2048 {
-                return Err(crate::error::LatuiError::App("Description too long".to_string()));
-            }
-        }
-        if let Some(ref gn) = generic_name {
-            if gn.len() > 256 {
-                return Err(crate::error::LatuiError::App("Generic name too long".to_string()));
-            }
-        }
+    pub fn with_field(mut self, name: &str, text: &str, weight: f64) -> Self {
         use crate::search::tokenizer::Tokenizer;
-        
         let tokenizer = Tokenizer::new();
         
-        // Tokenize name
-        let name_tokens = tokenizer.tokenize_comprehensive(&name);
-        
-        // Tokenize keywords
-        let keyword_tokens: Vec<String> = keywords
-            .iter()
-            .flat_map(|k| tokenizer.tokenize(k))
-            .collect();
-        
-        // Tokenize categories
-        let category_tokens: Vec<String> = categories
-            .iter()
-            .flat_map(|c| tokenizer.tokenize(c))
-            .collect();
-        
-        // Tokenize generic name
-        let generic_name_tokens = if let Some(ref gn) = generic_name {
-            tokenizer.tokenize_comprehensive(gn)
+        let sanitized = sanitize_text(text);
+        let tokens = if weight >= 8.0 {
+            tokenizer.tokenize_comprehensive(&sanitized)
         } else {
-            Vec::new()
+            tokenizer.tokenize(&sanitized)
         };
-        
-        // Tokenize description
-        let description_tokens = if let Some(ref desc) = description {
-            tokenizer.tokenize(desc)
-        } else {
-            Vec::new()
-        };
-        
-        // Tokenize executable
-        let executable_tokens = tokenizer.tokenize(&executable);
-        
-        // Extract all acronyms
-        let mut acronyms = Vec::new();
-        acronyms.extend(tokenizer.extract_all_acronyms(&name));
-        if let Some(ref gn) = generic_name {
-            acronyms.extend(tokenizer.extract_all_acronyms(gn));
+
+        if weight >= 9.0 {
+            self.acronyms.extend(tokenizer.extract_all_acronyms(&sanitized));
+            self.acronyms.sort();
+            self.acronyms.dedup();
         }
+
+        self.fields.push(IndexedField {
+            name: name.to_string(),
+            text: sanitized,
+            tokens,
+            weight,
+        });
         
-        // Remove duplicate acronyms
-        acronyms.sort();
-        acronyms.dedup();
-        
-        Ok(Self {
-            item,
-            name,
-            keywords,
-            categories,
-            generic_name,
-            description,
-            executable,
-            name_tokens,
-            keyword_tokens,
-            category_tokens,
-            generic_name_tokens,
-            description_tokens,
-            executable_tokens,
-            acronyms,
-        })
+        self
+    }
+
+    /// Get all searchable text fields with their weights
+    pub fn get_weighted_fields(&self) -> Vec<SearchField<'_>> {
+        self.fields.iter().map(|f| SearchField {
+            text: Cow::Borrowed(&f.text),
+            tokens: Cow::Borrowed(&f.tokens),
+            weight: f.weight,
+        }).collect()
     }
 }
 
 fn sanitize_text(text: &str) -> String {
-    // Filter out control characters and most non-printable ASCII to prevent terminal injection
     text.chars()
         .filter(|c| !c.is_control())
         .collect()
 }
 
-impl SearchableItem {
-    /// Get all searchable text fields with their weights
-    pub fn get_weighted_fields(&self) -> Vec<SearchField<'_>> {
-        use std::borrow::Cow;
-        let mut fields = Vec::new();
-
-        // Name (weight: 10.0) - highest priority
-        fields.push(SearchField {
-            text: Cow::Borrowed(&self.name),
-            tokens: Cow::Borrowed(&self.name_tokens),
-            weight: 10.0,
-        });
-
-        // Keywords (weight: 8.0)
-        for keyword in &self.keywords {
-            fields.push(SearchField {
-                text: Cow::Borrowed(keyword),
-                tokens: Cow::Owned(vec![keyword.to_lowercase()]),
-                weight: 8.0,
-            });
-        }
-
-        // Generic name (weight: 7.0)
-        if let Some(generic) = &self.generic_name {
-            fields.push(SearchField {
-                text: Cow::Borrowed(generic),
-                tokens: Cow::Borrowed(&self.generic_name_tokens),
-                weight: 7.0,
-            });
-        }
-
-        // Categories (weight: 5.0)
-        for category in &self.categories {
-            fields.push(SearchField {
-                text: Cow::Borrowed(category),
-                tokens: Cow::Owned(vec![category.to_lowercase()]),
-                weight: 5.0,
-            });
-        }
-
-        // Description (weight: 3.0)
-        if let Some(desc) = &self.description {
-            fields.push(SearchField {
-                text: Cow::Borrowed(desc),
-                tokens: Cow::Borrowed(&self.description_tokens),
-                weight: 3.0,
-            });
-        }
-
-        // Executable (weight: 2.0) - lowest priority
-        fields.push(SearchField {
-            text: Cow::Borrowed(&self.executable),
-            tokens: Cow::Borrowed(&self.executable_tokens),
-            weight: 2.0,
-        });
-
-        fields
-    }
-}
-
-/// A searchable field with its weight
+/// A searchable field view for the search engine
 #[derive(Clone, Debug)]
 pub struct SearchField<'a> {
     pub text: std::borrow::Cow<'a, str>,

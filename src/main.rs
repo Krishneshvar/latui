@@ -1,5 +1,15 @@
 use latui::app::state::AppState;
-use latui::ui;
+use latui::modes::{
+    apps::AppsMode,
+    run::RunMode,
+    files::FilesMode,
+    clipboard::ClipboardMode,
+    emojis::EmojisMode,
+};
+use latui::tracking::frequency::FrequencyTracker;
+use latui::config::keywords::KeywordMapper;
+use latui::config::loader::load_user_config_path;
+use std::fs;
 
 use tracing::{info, error, debug, Level};
 use tracing_appender::rolling;
@@ -9,7 +19,6 @@ use std::io;
 
 
 use crossterm::{
-    event::{self, Event, KeyCode, KeyModifiers},
     execute,
     terminal::{enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -86,126 +95,70 @@ fn run_app() -> anyhow::Result<()> {
 
     let mut app = AppState::new();
     
+    // Initialize common components
+    let xdg = BaseDirectories::with_prefix("latui");
+    let frequency_tracker = match xdg.place_data_file("usage.db") {
+        Ok(db_path) => {
+            match FrequencyTracker::new(&db_path) {
+                Ok(mut tracker) => {
+                    let _ = tracker.cleanup(30);
+                    Some(tracker)
+                }
+                Err(e) => {
+                    error!("Failed to initialize usage tracker: {}", e);
+                    None
+                }
+            }
+        }
+        Err(e) => {
+            error!("Failed to generate usage tracking path: {}", e);
+            None
+        }
+    };
+
+    let mut keyword_mapper = KeywordMapper::with_defaults();
+    if let Some(path) = load_user_config_path() {
+        if let Ok(content) = fs::read_to_string(&path) {
+            if let Ok(custom_mapper) = KeywordMapper::from_toml(&content) {
+                keyword_mapper = custom_mapper;
+                info!("Loaded custom keywords from {:?}", path);
+            }
+        }
+    }
+
+    // Register built-in modes with injected dependencies
+    app.mode_registry.register("apps", Box::new(AppsMode::new(frequency_tracker, keyword_mapper)));
+    app.mode_registry.register("run", Box::new(RunMode::new()));
+    app.mode_registry.register("files", Box::new(FilesMode::new()));
+    app.mode_registry.register("clipboard", Box::new(ClipboardMode::new()));
+    app.mode_registry.register("emojis", Box::new(EmojisMode::new()));
+    
     // Load all registered modes
     info!("Initializing modes...");
-    let mode_names: Vec<String> = app.mode_registry.get_mode_order().to_vec();
-    for mode_name in &mode_names {
-        if let Err(e) = app.mode_registry.switch_mode(mode_name) {
+    for mode_name in app.mode_registry.get_mode_order().to_vec() {
+        if let Err(e) = app.mode_registry.switch_mode(&mode_name) {
             error!("Failed to switch to mode '{}': {}", mode_name, e);
             continue;
         }
         
         if let Some(mode) = app.mode_registry.get_active_mode_mut() {
-            debug!("Loading mode: {} ({})", mode.name(), mode.description());
+            debug!("Loading mode: {}", mode.name());
             if let Err(e) = mode.load() {
                 error!("Failed to load mode '{}': {}", mode.name(), e);
             }
         }
     }
     
-    // Switch back to default mode
+    // Switch back to default mode and initial search
     let default_mode = app.mode_registry.default_mode.clone();
     app.mode_registry.switch_mode(&default_mode)?;
-    
-    // Initial search with empty query
     if let Some(mode) = app.mode_registry.get_active_mode_mut() {
-        debug!("Loading initial results for mode: {}", mode.name());
         app.filtered_items = mode.search("");
     }
-    debug!("Initial items loaded: {}", app.filtered_items.len());
 
-    loop {
-        terminal.draw(|f| ui::renderer::draw(f, &mut app))?;
-
-        if let Event::Key(key) = event::read()? {
-            match (key.code, key.modifiers) {
-                // Character input
-                (KeyCode::Char(c), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
-                    if is_valid_query_char(c) && app.query.len() < 128 {
-                        app.query.push(c);
-                        update_results(&mut app);
-                    }
-                }
-
-                // Backspace
-                (KeyCode::Backspace, _) => {
-                    app.query.pop();
-                    update_results(&mut app);
-                }
-
-                // Navigation
-                (KeyCode::Down, _) => {
-                    app.next();
-                }
-
-                (KeyCode::Up, _) => {
-                    app.previous();
-                }
-
-                // Mode switching
-                (KeyCode::Tab, KeyModifiers::NONE) => {
-                    app.mode_registry.next_mode();
-                    app.query.clear();
-                    update_results(&mut app);
-                    info!("Switched to mode: {}", app.mode_registry.active_mode);
-                }
-                
-                (KeyCode::BackTab, _) => {
-                    app.mode_registry.previous_mode();
-                    app.query.clear();
-                    update_results(&mut app);
-                    info!("Switched to mode: {}", app.mode_registry.active_mode);
-                }
-
-                // Execute selected item
-                (KeyCode::Enter, _) => {
-                    if let Some(i) = app.list_state.selected() {
-                        if let Some(item) = app.filtered_items.get(i).cloned() {
-                            if let Some(mode) = app.mode_registry.get_active_mode_mut() {
-                                info!("Executing item '{}' in mode '{}'", item.title, mode.name());
-                                
-                                // Record the selection for usage tracking
-                                mode.record_selection(&app.query, &item);
-                                
-                                // Execute the action
-                                if let Err(e) = mode.execute(&item) {
-                                    error!("Failed to execute item '{}': {}", item.title, e);
-                                    // Continue running instead of crashing
-                                } else {
-                                    // Exit after successful execution
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Exit
-                (KeyCode::Esc, _) => {
-                    info!("User requested exit via Esc");
-                    break;
-                }
-
-                _ => {}
-            }
-        }
-    }
+    let controller = latui::app::controller::AppController::new();
+    let res = controller.run(&mut terminal, &mut app);
 
     terminal.show_cursor()?;
-    Ok(())
-}
-
-/// Validates that a character is safe for search queries.
-/// Prevents injection attacks and ensures reasonable input.
-fn is_valid_query_char(c: char) -> bool {
-    // Only allow safe characters for search
-    c.is_alphanumeric() || c.is_whitespace() || "-_.$+!*'(),/".contains(c)
-}
-
-/// Updates search results based on current query and active mode.
-fn update_results(app: &mut AppState) {
-    if let Some(mode) = app.mode_registry.get_active_mode_mut() {
-        app.filtered_items = mode.search(&app.query);
-    }
-    app.reset_selection();
+    res
 }

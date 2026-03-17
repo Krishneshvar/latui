@@ -1,8 +1,6 @@
-use crate::core::{action::Action, item::Item, mode::Mode, searchable_item::SearchableItem};
+use crate::core::{item::Item, mode::Mode, searchable_item::SearchableItem};
 use crate::error::LatuiError;
 use crate::cache::apps_cache::{load_cache, save_cache};
-use crate::matcher::fuzzy::FuzzyMatcher;
-use crate::search::typo::TypoTolerance;
 use crate::tracking::frequency::FrequencyTracker;
 use crate::index::trie::MultiTokenTrie;
 
@@ -15,102 +13,29 @@ use std::process::Command;
 pub struct AppsMode {
     items: Vec<SearchableItem>,
     trie: Option<MultiTokenTrie>,
-    typo_tolerance: TypoTolerance,
     frequency_tracker: Option<FrequencyTracker>,
     keyword_mapper: crate::config::keywords::KeywordMapper,
-    fuzzy_matcher: FuzzyMatcher,
+    search_engine: crate::search::engine::SearchEngine,
     last_action_time: Option<std::time::Instant>,
 }
 
 impl AppsMode {
-    pub fn new() -> Self {
-        // Initialize frequency tracker
-        let mut frequency_tracker = Self::init_frequency_tracker();
-        
-        // Cleanup old stats (keep 30 days)
-        if let Some(ref mut tracker) = frequency_tracker {
-            if let Err(e) = tracker.cleanup(30) {
-                tracing::warn!("Failed to cleanup old usage data: {}", e);
-            }
-        }
-        
+    pub fn new(
+        frequency_tracker: Option<FrequencyTracker>,
+        keyword_mapper: crate::config::keywords::KeywordMapper,
+    ) -> Self {
         Self {
             items: Vec::new(),
             trie: None,
-            typo_tolerance: TypoTolerance::new(),
             frequency_tracker,
-            keyword_mapper: Self::init_keyword_mapper(),
-            fuzzy_matcher: FuzzyMatcher::new(),
+            keyword_mapper,
+            search_engine: crate::search::engine::SearchEngine::new(),
             last_action_time: None,
         }
     }
-    
-    /// Initialize frequency tracker with database
-    fn init_frequency_tracker() -> Option<FrequencyTracker> {
-        use xdg::BaseDirectories;
-        
-        let xdg = BaseDirectories::with_prefix("latui");
-        let db_path = match xdg.place_data_file("usage.db") {
-            Ok(p) => p,
-            Err(e) => {
-                tracing::error!("Failed to generate usage tracking path: {}", e);
-                return None;
-            }
-        };
-        
-        match FrequencyTracker::new(&db_path) {
-            Ok(tracker) => Some(tracker),
-            Err(e) => {
-                tracing::error!("Failed to initialize usage tracker DB: {}", e);
-                None
-            }
-        }
-    }
 
-    fn init_keyword_mapper() -> crate::config::keywords::KeywordMapper {
-        use crate::config::keywords::KeywordMapper;
-        use crate::config::loader::load_user_config_path;
-        use std::fs;
-
-        let mapper = KeywordMapper::with_defaults();
-
-        if let Some(path) = load_user_config_path() {
-            match fs::read_to_string(&path) {
-                Ok(content) => {
-                    match KeywordMapper::from_toml(&content) {
-                        Ok(custom_mapper) => {
-                            // Merge custom mappings into defaults
-                            // For simplicity, we can just use the custom_mapper if it successfully parsed
-                            // or merge them if KeywordMapper supported merging.
-                            // Let's at least log it.
-                            tracing::info!("Loaded custom keywords from {:?}", path);
-                            return custom_mapper;
-                        }
-                        Err(e) => tracing::error!("Failed to parse keywords TOML: {}", e),
-                    }
-                }
-                Err(e) => tracing::error!("Failed to read keywords file: {}", e),
-            }
-        }
-
-        mapper
-    }
     
     
-    /// Score acronym matches
-    fn score_acronym_match(&self, query: &str, item: &SearchableItem) -> f64 {
-        // Check if query matches any acronym
-        for acronym in &item.acronyms {
-            if acronym == query {
-                // Exact acronym match gets high score with name field weight
-                return 250.0 * 10.0; // 2500.0
-            } else if acronym.starts_with(query) {
-                // Prefix acronym match
-                return 200.0 * 10.0; // 2000.0
-            }
-        }
-        0.0
-    }
 
     fn build_index() -> Vec<SearchableItem> {
 
@@ -207,26 +132,32 @@ impl AppsMode {
                             title: name.clone(),
                             search_text: name.to_lowercase(),
                             description: description.clone(),
-                            action: Action::Launch(exec.clone()),
+                            metadata: Some(exec.clone()),
                         };
 
                         // Create SearchableItem with all fields
-                        match SearchableItem::new(
-                            item,
-                            name.to_lowercase(),
-                            keywords,
-                            categories,
-                            generic_name,
-                            description,
-                            executable,
-                        ) {
-                            Ok(searchable) => {
-                                items.push(searchable);
-                            }
-                            Err(e) => {
-                                tracing::warn!("Failed to ingest {}: {}", path.display(), e);
-                            }
+                        let mut searchable = SearchableItem::new(item)
+                            .with_field("name", &name, 10.0);
+                        
+                        if let Some(gn) = generic_name {
+                            searchable = searchable.with_field("generic_name", &gn, 7.0);
                         }
+                        
+                        for keyword in keywords {
+                            searchable = searchable.with_field("keyword", &keyword, 8.0);
+                        }
+                        
+                        for category in categories {
+                            searchable = searchable.with_field("category", &category, 5.0);
+                        }
+                        
+                        if let Some(desc) = description {
+                            searchable = searchable.with_field("description", &desc, 3.0);
+                        }
+                        
+                        searchable = searchable.with_field("executable", &executable, 2.0);
+                        
+                        items.push(searchable);
                     }
                     Err(e) => {
                         tracing::warn!("Failed to parse desktop file {}: {}", path.display(), e);
@@ -274,25 +205,21 @@ impl Mode for AppsMode {
     }
 
     fn search(&mut self, query: &str) -> Vec<Item> {
-        if query.is_empty() || query.len() > 128 {
-            return if query.is_empty() {
-                let mut scored_all: Vec<(usize, f64)> = self.items.iter().enumerate().map(|(idx, searchable)| {
-                    let mut score = 0.0;
-                    if let Some(ref tracker) = self.frequency_tracker {
-                        score += tracker.get_total_boost(&searchable.item.id);
-                    }
-                    (idx, score)
-                }).collect();
+        if query.is_empty() {
+            let mut scored_all: Vec<(usize, f64)> = self.items.iter().enumerate().map(|(idx, searchable)| {
+                let mut score = 0.0;
+                if let Some(ref tracker) = self.frequency_tracker {
+                    score += tracker.get_total_boost(&searchable.item.id);
+                }
+                (idx, score)
+            }).collect();
 
-                // Sort by score (descending)
-                scored_all.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-                
-                scored_all.into_iter()
-                    .map(|(idx, _)| self.items[idx].item.clone())
-                    .collect()
-            } else {
-                Vec::new()
-            };
+            // Sort by score (descending)
+            scored_all.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+            
+            return scored_all.into_iter()
+                .map(|(idx, _)| self.items[idx].item.clone())
+                .collect();
         }
 
         use crate::search::tokenizer::Tokenizer;
@@ -305,22 +232,20 @@ impl Mode for AppsMode {
         // Get candidate indices from trie (fast prefix filtering)
         let mut candidate_indices = if let Some(ref trie) = self.trie {
             if query_tokens.len() > 1 {
-                // For multi-token queries, use AND logic (all tokens must match a prefix)
                 trie.get_multi_token_candidates(&query_tokens)
             } else {
-                // For single token, just get candidates for the query
                 trie.get_candidates(&q)
             }
         } else {
-            // Fallback: search all items if trie not built
             (0..self.items.len()).collect()
         };
 
-        // Add candidates from keyword mappings (e.g., "browser" -> "firefox")
+        // Add candidates from keyword mappings
         if let Some(mapped_apps) = self.keyword_mapper.get_matches(&q) {
             for app_needle in mapped_apps {
                 for (idx, item) in self.items.iter().enumerate() {
-                    if item.name.to_lowercase().contains(app_needle) {
+                    // This is a bit slow, but keyword mappings are usually for a few apps
+                    if item.item.title.to_lowercase().contains(app_needle) {
                         if !candidate_indices.contains(&idx) {
                             candidate_indices.push(idx);
                         }
@@ -329,131 +254,33 @@ impl Mode for AppsMode {
             }
         }
 
-        tracing::trace!("Search query '{}' yielded {} candidates", query, candidate_indices.len());
-
-        // If no candidates from trie, return empty
         if candidate_indices.is_empty() {
             return Vec::new();
         }
 
-        // Collect candidates with their scores (only score trie candidates)
-        let mut scored_items: Vec<(usize, f64)> = Vec::new();
-
-        for idx in candidate_indices {
-            let searchable = &self.items[idx];
-            let mut best_score: f64 = 0.0;
-
-            // Check acronym match first (high priority)
-            let acronym_score = self.score_acronym_match(&q, searchable);
-            best_score = best_score.max(acronym_score);
-
-            // Get all weighted fields
-            let fields = searchable.get_weighted_fields();
-
-            // Score each field
-            for field in fields {
-                let field_text = field.text.to_lowercase();
-                let mut field_score = 0.0;
-
-                // Exact match (highest priority)
-                if field_text == q {
-                    field_score = 1000.0;
-                }
-                // Prefix match
-                else if field_text.starts_with(&q) {
-                    field_score = 500.0;
-                }
-                // Token-based matching
-                else {
-                    // Check if query matches any token exactly
-                    let token_exact = field.tokens.iter().any(|t| t == &q);
-                    if token_exact {
-                        field_score = 400.0;
-                    }
-                    // Check if query is prefix of any token
-                    else if field.tokens.iter().any(|t| t.starts_with(&q)) {
-                        field_score = 350.0;
-                    }
-                    // Word boundary match
-                    else if field_text.split_whitespace().any(|word| word.starts_with(&q)) {
-                        field_score = 300.0;
-                    }
-                    // Multi-token match (all query tokens match)
-                    else if !query_tokens.is_empty() {
-                        let all_match = query_tokens.iter().all(|qt| {
-                            field.tokens.iter().any(|ft| ft.contains(qt))
-                        });
-                        if all_match {
-                            field_score = 250.0;
-                        }
-                    }
-                    
-                    // Typo tolerance
-                    if field_score == 0.0 {
-                        // Check typo match against field text
-                        if let Some(typo_score) = self.typo_tolerance.score(&q, &field_text) {
-                            field_score = typo_score;
-                        }
-                        // Also check against individual tokens
-                        else {
-                            for token in field.tokens.iter() {
-                                if let Some(typo_score) = self.typo_tolerance.score(&q, token) {
-                                    field_score = field_score.max(typo_score);
-                                }
-                            }
-                        }
-                    }
-                    
-                    // Substring match
-                    if field_score == 0.0 && field_text.contains(&q) {
-                        field_score = 100.0;
-                    }
-                    
-                    // Fuzzy match as fallback
-                    if field_score == 0.0 {
-                        let results = self.fuzzy_matcher.filter(&q, &[&field_text]);
-                        if let Some((_, score)) = results.first() {
-                            field_score = (*score as f64).min(200.0);
-                        }
-                    }
-                }
-
-                // Apply field weight
-                let weighted_score = field_score * field.weight;
-                best_score = best_score.max(weighted_score);
-            }
-
-            // Add frequency and recency boosts
-            if let Some(ref tracker) = self.frequency_tracker {
-                let app_id = &searchable.item.id;
-                
+        // Delegate to SearchEngine for candidate scoring
+        let candidates: Vec<SearchableItem> = candidate_indices.iter()
+            .map(|&idx| self.items[idx].clone())
+            .collect();
+            
+        let mut scored_results = self.search_engine.search_scored(query, &candidates);
+        
+        // Re-apply boosts to the results
+        if let Some(ref tracker) = self.frequency_tracker {
+            for (item, score) in scored_results.iter_mut() {
                 // Frequency boost (0-100 points)
-                let frequency_boost = tracker.get_frequency_boost(app_id);
-                
+                *score += tracker.get_frequency_boost(&item.id);
                 // Recency boost (0-50 points)
-                let recency_boost = tracker.get_recency_boost(app_id);
-                
+                *score += tracker.get_recency_boost(&item.id);
                 // Query-specific boost (0-50 points)
-                let query_boost = tracker.get_query_boost(&q, app_id);
-                
-                // Add all boosts to the score
-                best_score += frequency_boost + recency_boost + query_boost;
+                *score += tracker.get_query_boost(&q, &item.id);
             }
-
-            if best_score > 0.0 {
-                scored_items.push((idx, best_score));
-            }
+            
+            // Re-sort after applying boosts
+            scored_results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         }
 
-        // Sort by score (descending)
-        scored_items.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-
-        // Return items in sorted order
-        let results: Vec<Item> = scored_items
-            .iter()
-            .map(|(idx, _)| self.items[*idx].item.clone())
-            .collect();
-
+        let results: Vec<Item> = scored_results.into_iter().map(|(item, _)| item).collect();
         tracing::trace!("Search for '{}' completed in {:?} with {} results", query, start.elapsed(), results.len());
         results
     }
@@ -475,40 +302,37 @@ impl Mode for AppsMode {
             }
         }
 
-        match &item.action {
-            Action::Launch(cmd) | Action::Command(cmd) => {
-                let parts: Vec<&str> = cmd.split_whitespace().collect();
-                if parts.is_empty() {
-                    return Ok(());
-                }
-
-                // Security: Avoid shell injection by executing directly if there are no shell metacharacters
-                let shell_chars = [';', '&', '|', '<', '>', '(', ')', '$', '`', '\\', '"', '\'', '*', '?', '[', ']', '~', '!'];
-                let has_shell_chars = cmd.chars().any(|c| shell_chars.contains(&c));
-
-                let child = if !has_shell_chars {
-                    // Safe direct execution
-                    Command::new(parts[0])
-                        .args(&parts[1..])
-                        .spawn()
-                } else {
-                    // Fallback to shell with warning
-                    tracing::warn!("Executing command with shell features: {}", cmd);
-                    Command::new("sh")
-                        .arg("-c")
-                        .arg(cmd)
-                        .spawn()
-                };
-
-                if let Err(e) = child {
-                    tracing::error!("Failed to execute '{}': {}", cmd, e);
-                    return Err(LatuiError::Io(e));
-                }
+        if let Some(cmd) = &item.metadata {
+            let parts: Vec<&str> = cmd.split_whitespace().collect();
+            if parts.is_empty() {
+                return Ok(());
             }
-            _ => {
-                tracing::warn!("Apps mode received unsupported action type: {:?}", item.action);
-                return Err(LatuiError::App("Unsupported action type for Apps mode".to_string()));
+
+            // Security: Avoid shell injection by executing directly if there are no shell metacharacters
+            let shell_chars = [';', '&', '|', '<', '>', '(', ')', '$', '`', '\\', '"', '\'', '*', '?', '[', ']', '~', '!'];
+            let has_shell_chars = cmd.chars().any(|c| shell_chars.contains(&c));
+
+            let child = if !has_shell_chars {
+                // Safe direct execution
+                Command::new(parts[0])
+                    .args(&parts[1..])
+                    .spawn()
+            } else {
+                // Fallback to shell with warning
+                tracing::warn!("Executing command with shell features: {}", cmd);
+                Command::new("sh")
+                    .arg("-c")
+                    .arg(cmd)
+                    .spawn()
+            };
+
+            if let Err(e) = child {
+                tracing::error!("Failed to execute '{}': {}", cmd, e);
+                return Err(LatuiError::Io(e));
             }
+        } else {
+            tracing::warn!("Apps mode received item without metadata (command): {}", item.title);
+            return Err(LatuiError::App("Missing command metadata for execution".to_string()));
         }
         Ok(())
     }

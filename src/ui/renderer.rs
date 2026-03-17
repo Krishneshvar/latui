@@ -225,7 +225,7 @@ fn render_apps_results_list_with_inline_icons(frame: &mut Frame, app: &mut AppSt
 
         let rendered_image = render_inline_icon_image(frame, app, icon_rect, &item);
         if !rendered_image && icon_rect.width > 0 {
-            let fallback = item.icon.as_deref().unwrap_or(" ");
+            let fallback = "⚙️";
             let buf = frame.buffer_mut();
             buf.set_stringn(
                 icon_rect.x,

@@ -1,6 +1,6 @@
 [package]
 name = "latui"
-version = "1.0.2"
+version = "1.1.0"
 authors = ["Krishneshvar <krishjn07@gmail.com>"]
 edition = "2024"
 description = "A TUI-based multi-purpose launcher"
@@ -10,33 +10,21 @@ keywords = ["launcher", "latui"]
 categories = ["command-line-utilities"]
 
 [dependencies]
-
 ratatui = "0.30.0"
 crossterm = "0.29.0"
-
 nucleo-matcher = "0.3.1"
-
 serde = { version = "1.0.228", features = ["derive"] }
 toml = "1.0.6"
-
 anyhow = "1.0.102"
 thiserror = "2.0.18"
-
 walkdir = "2.5.0"
-
 xdg = "3.0.0"
-
 freedesktop-desktop-entry = "0.8.1"
 freedesktop-icons = "0.4.0"
 image = { version = "0.25.8", default-features = false, features = ["png", "jpeg", "gif", "ico", "bmp", "webp"] }
 ratatui-image = { version = "10.0.6", default-features = false, features = ["crossterm"] }
-
 serde_json = "1.0.149"
-
-# Phase 1.2: Tokenization
 unicode-segmentation = "1.12"
-
-# Phase 2.3: Frequency & Recency Tracking
 rusqlite = "0.38.0"
 lru = "0.16.3"
 rustc-hash = "2.1.1"

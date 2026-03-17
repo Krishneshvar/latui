@@ -47,13 +47,11 @@ impl Tokenizer {
         }
         
         // Extract acronym from full text if enabled
-        if self.extract_acronyms {
-            if let Some(acronym) = self.extract_acronym(text) {
-                if !tokens.contains(&acronym) {
+        if self.extract_acronyms
+            && let Some(acronym) = self.extract_acronym(text)
+                && !tokens.contains(&acronym) {
                     tokens.push(acronym);
                 }
-            }
-        }
         
         tokens
     }

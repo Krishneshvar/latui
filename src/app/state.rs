@@ -71,3 +71,9 @@ impl AppState {
         self.list_state.select(Some(0));
     }
 }
+
+impl Default for AppState {
+    fn default() -> Self {
+        Self::new()
+    }
+}

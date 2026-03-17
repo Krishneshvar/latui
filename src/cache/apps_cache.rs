@@ -28,8 +28,7 @@ pub fn load_cache() -> Result<Vec<SearchableItem>, CacheError> {
     // Validation: Don't load massive cache files (> 10MB)
     let metadata = fs::metadata(&path)?;
     if metadata.len() > 10 * 1024 * 1024 {
-        return Err(CacheError::Io(std::io::Error::new(
-            std::io::ErrorKind::Other,
+        return Err(CacheError::Io(std::io::Error::other(
             "Cache file too large",
         )));
     }

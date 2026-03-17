@@ -117,14 +117,12 @@ fn run_app() -> anyhow::Result<()> {
     };
 
     let mut keyword_mapper = KeywordMapper::with_defaults();
-    if let Some(path) = load_user_config_path() {
-        if let Ok(content) = fs::read_to_string(&path) {
-            if let Ok(custom_mapper) = KeywordMapper::from_toml(&content) {
+    if let Some(path) = load_user_config_path()
+        && let Ok(content) = fs::read_to_string(&path)
+            && let Ok(custom_mapper) = KeywordMapper::from_toml(&content) {
                 keyword_mapper = custom_mapper;
                 info!("Loaded custom keywords from {:?}", path);
             }
-        }
-    }
 
     // Register built-in modes with injected dependencies
     app.mode_registry.register("apps", Box::new(AppsMode::new(frequency_tracker, keyword_mapper)));

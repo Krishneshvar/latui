@@ -12,13 +12,22 @@ impl AppController {
     pub fn new() -> Self {
         Self {}
     }
+}
+
+impl Default for AppController {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl AppController {
 
     pub fn run<B: Backend>(&self, terminal: &mut Terminal<B>, app: &mut AppState) -> anyhow::Result<()> {
         loop {
             terminal.draw(|f| ui::renderer::draw(f, app)).map_err(|e| anyhow::anyhow!("Draw error: {}", e))?;
 
-            if event::poll(Duration::from_millis(100))? {
-                if let Event::Key(key) = event::read()? {
+            if let Ok(true) = event::poll(Duration::from_millis(100))
+                && let Event::Key(key) = event::read()? {
                     match (key.code, key.modifiers) {
                         // Character input
                         (KeyCode::Char(c), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
@@ -58,23 +67,32 @@ impl AppController {
 
                         // Execute selected item
                         (KeyCode::Enter, _) => {
-                            if let Some(i) = app.list_state.selected() {
-                                if let Some(item) = app.filtered_items.get(i).cloned() {
-                                    if let Some(mode) = app.mode_registry.get_active_mode_mut() {
+                            if let Some(i) = app.list_state.selected()
+                                && let Some(item) = app.filtered_items.get(i).cloned()
+                                    && let Some(mode) = app.mode_registry.get_active_mode_mut() {
                                         // Record the selection for usage tracking
                                         mode.record_selection(&app.query, &item);
-                                        
+
+                                        let keep_open = mode.stays_open();
+
                                         // Execute the action
-                                        if let Err(e) = mode.execute(&item) {
-                                            tracing::error!("Failed to execute item '{}': {}", item.title, e);
-                                        } else {
-                                            // Exit after successful execution
-                                            return Ok(());
+                                        match mode.execute(&item) {
+                                            Ok(()) => {
+                                                if !keep_open {
+                                                    return Ok(());
+                                                }
+                                                // Stay open: clear query so the picker is ready
+                                                // for the next selection (useful for clipboard / emojis).
+                                                app.query.clear();
+                                                self.update_results(app);
+                                            }
+                                            Err(e) => {
+                                                tracing::error!("Failed to execute item '{}': {}", item.title, e);
+                                            }
                                         }
                                     }
-                                }
-                            }
                         }
+
 
                         // Exit
                         (KeyCode::Esc, _) => {
@@ -84,7 +102,6 @@ impl AppController {
                         _ => {}
                     }
                 }
-            }
         }
     }
 
@@ -97,5 +114,5 @@ impl AppController {
 }
 
 fn is_valid_query_char(c: char) -> bool {
-    c.is_alphanumeric() || c.is_whitespace() || "-_.$+!*'(),/".contains(c)
+    c.is_alphanumeric() || c.is_whitespace() || "-_.$+!*'(),/@:".contains(c)
 }

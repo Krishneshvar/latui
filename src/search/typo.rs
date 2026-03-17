@@ -89,11 +89,11 @@ impl TypoTolerance {
         
         let mut matrix = vec![vec![0; len2 + 1]; len1 + 1];
 
-        for i in 0..=len1 {
-            matrix[i][0] = i;
+        for (i, row) in matrix.iter_mut().enumerate().take(len1 + 1) {
+            row[0] = i;
         }
-        for j in 0..=len2 {
-            matrix[0][j] = j;
+        for (j, cell) in matrix[0].iter_mut().enumerate().take(len2 + 1) {
+            *cell = j;
         }
 
         for i in 1..=len1 {
@@ -152,7 +152,7 @@ impl TypoTolerance {
         }
         
         // Skip if target is much longer (unlikely to be a typo)
-        let len_diff = (query.len() as i32 - target.len() as i32).abs() as usize;
+        let len_diff = (query.len() as i32 - target.len() as i32).unsigned_abs() as usize;
         if len_diff > self.max_distance {
             return None;
         }

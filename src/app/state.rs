@@ -1,21 +1,31 @@
 use crate::core::item::Item;
+use crate::core::registry::ModeRegistry;
+use crate::ui::theme::Theme;
 use ratatui::widgets::ListState;
 
 pub struct AppState {
     pub query: String,
     pub filtered_items: Vec<Item>,
     pub list_state: ListState,
+    pub mode_registry: ModeRegistry,
+    pub active_tab: usize,
+    pub show_preview: bool,
+    pub theme: Theme,
 }
 
 impl AppState {
-    pub fn new(items: Vec<Item>) -> Self {
+    pub fn new() -> Self {
         let mut list_state = ListState::default();
         list_state.select(Some(0));
 
         Self {
             query: String::new(),
-            filtered_items: items,
+            filtered_items: Vec::new(),
             list_state,
+            mode_registry: ModeRegistry::new(),
+            active_tab: 0,
+            show_preview: false,
+            theme: Theme::default(),
         }
     }
 

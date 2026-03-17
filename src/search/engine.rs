@@ -10,6 +10,12 @@ pub struct SearchEngine {
     fuzzy_matcher: FuzzyMatcher,
 }
 
+impl Default for SearchEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SearchEngine {
     pub fn new() -> Self {
         Self {

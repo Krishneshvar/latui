@@ -9,6 +9,12 @@ pub struct FuzzyMatcher {
     matcher: Matcher,
 }
 
+impl Default for FuzzyMatcher {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FuzzyMatcher {
     pub fn new() -> Self {
         Self {

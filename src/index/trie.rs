@@ -15,6 +15,12 @@ pub struct Trie {
     root: TrieNode,
 }
 
+impl Default for Trie {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Trie {
     pub fn new() -> Self {
         Self {
@@ -53,6 +59,12 @@ impl Trie {
 /// Multi-token trie for efficient prefix filtering
 pub struct MultiTokenTrie {
     trie: Trie,
+}
+
+impl Default for MultiTokenTrie {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl MultiTokenTrie {
@@ -120,7 +132,7 @@ impl MultiTokenTrie {
         // Optimize: Sort tokens by length (descending) assuming longer tokens are rarer
         // This helps the intersection process reduce search space faster
         let mut sorted_tokens: Vec<&String> = tokens.iter().collect();
-        sorted_tokens.sort_by(|a, b| b.len().cmp(&a.len()));
+        sorted_tokens.sort_by_key(|a| std::cmp::Reverse(a.len()));
         
         // Get candidates for first token
         let mut candidates: FxHashSet<usize> = self.get_candidates(sorted_tokens[0])

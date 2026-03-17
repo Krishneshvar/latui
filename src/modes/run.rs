@@ -5,7 +5,6 @@ use crate::tracking::frequency::FrequencyTracker;
 
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
-use std::env;
 use std::path::PathBuf;
 use std::process::Command;
 use std::time::Instant;
@@ -57,9 +56,8 @@ impl RunMode {
     }
 
     pub fn with_tracker(frequency_tracker: Option<FrequencyTracker>) -> Self {
-        // Detect shell from environment
-        let shell = env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
-        
+        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
+
         Self {
             history: VecDeque::new(),
             searchable_history: Vec::new(),
@@ -71,6 +69,15 @@ impl RunMode {
             dirty: false,
         }
     }
+}
+
+impl Default for RunMode {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl RunMode {
 
     /// Load command history from disk
     fn load_history(&mut self) -> Result<(), LatuiError> {
@@ -78,7 +85,7 @@ impl RunMode {
         
         let xdg = BaseDirectories::with_prefix("latui");
         let history_path = xdg.place_data_file("run_history.json")
-            .map_err(|e| LatuiError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            .map_err(|e| LatuiError::Io(std::io::Error::other(e)))?;
         
         self.history_path = Some(history_path.clone());
         
@@ -134,20 +141,25 @@ impl RunMode {
             None => return Ok(()),
         };
         
-        // Convert to Vec for serialization
         let entries: Vec<HistoryEntry> = self.history.iter().cloned().collect();
         
         let json = serde_json::to_string_pretty(&entries)
-            .map_err(|e| LatuiError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            .map_err(|e| LatuiError::Io(std::io::Error::other(e)))?;
         
-        std::fs::write(history_path, json)?;
+        // Write to temporary file for atomicity
+        let mut tmp_path = history_path.clone();
+        tmp_path.set_extension("tmp");
         
-        // Set secure permissions
+        std::fs::write(&tmp_path, json)?;
+        
+        // Set secure permissions on tmp file before moving
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            let _ = std::fs::set_permissions(history_path, std::fs::Permissions::from_mode(0o600));
+            let _ = std::fs::set_permissions(&tmp_path, std::fs::Permissions::from_mode(0o600));
         }
+        
+        std::fs::rename(&tmp_path, history_path)?;
         
         self.dirty = false;
         tracing::debug!("Saved {} commands to history", self.history.len());
@@ -382,12 +394,11 @@ impl Mode for RunMode {
 
     fn execute(&mut self, item: &Item) -> Result<(), LatuiError> {
         // Rate limiting
-        if let Some(last) = self.last_action_time {
-            if last.elapsed() < std::time::Duration::from_millis(500) {
+        if let Some(last) = self.last_action_time
+            && last.elapsed() < std::time::Duration::from_millis(500) {
                 tracing::warn!("Rate limiting execution for: {}", item.title);
                 return Ok(());
             }
-        }
         self.last_action_time = Some(Instant::now());
         
         // Extract command from metadata
@@ -408,30 +419,27 @@ impl Mode for RunMode {
 
     fn record_selection(&mut self, query: &str, item: &Item) {
         // Rate limiting
-        if let Some(last) = self.last_action_time {
-            if last.elapsed() < std::time::Duration::from_millis(200) {
+        if let Some(last) = self.last_action_time
+            && last.elapsed() < std::time::Duration::from_millis(200) {
                 return;
             }
-        }
         self.last_action_time = Some(Instant::now());
         
         // Record in frequency tracker
-        if let Some(ref mut tracker) = self.frequency_tracker {
-            if let Err(e) = tracker.record_selection(query, &item.id) {
+        if let Some(ref mut tracker) = self.frequency_tracker
+            && let Err(e) = tracker.record_selection(query, &item.id) {
                 tracing::error!("Failed to record selection: {}", e);
             }
-        }
     }
 }
 
 impl Drop for RunMode {
     fn drop(&mut self) {
         // Save history on drop
-        if self.dirty {
-            if let Err(e) = self.save_history() {
+        if self.dirty
+            && let Err(e) = self.save_history() {
                 tracing::error!("Failed to save history on drop: {}", e);
             }
-        }
     }
 }
 

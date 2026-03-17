@@ -245,11 +245,10 @@ impl Mode for AppsMode {
             for app_needle in mapped_apps {
                 for (idx, item) in self.items.iter().enumerate() {
                     // This is a bit slow, but keyword mappings are usually for a few apps
-                    if item.item.title.to_lowercase().contains(app_needle) {
-                        if !candidate_indices.contains(&idx) {
+                    if item.item.title.to_lowercase().contains(app_needle)
+                        && !candidate_indices.contains(&idx) {
                             candidate_indices.push(idx);
                         }
-                    }
                 }
             }
         }
@@ -287,20 +286,18 @@ impl Mode for AppsMode {
 
     fn execute(&mut self, item: &Item) -> Result<(), LatuiError> {
         // Rate limiting for execution to prevent spamming processes
-        if let Some(last) = self.last_action_time {
-            if last.elapsed() < std::time::Duration::from_millis(500) {
+        if let Some(last) = self.last_action_time
+            && last.elapsed() < std::time::Duration::from_millis(500) {
                 tracing::warn!("Rate limiting execution for item: {}", item.title);
                 return Ok(());
             }
-        }
         self.last_action_time = Some(std::time::Instant::now());
 
         // Record the launch in frequency tracker
-        if let Some(ref mut tracker) = self.frequency_tracker {
-            if let Err(e) = tracker.record_launch(&item.id) {
+        if let Some(ref mut tracker) = self.frequency_tracker
+            && let Err(e) = tracker.record_launch(&item.id) {
                 tracing::error!("Failed to record launch tracking: {}", e);
             }
-        }
 
         if let Some(cmd) = &item.metadata {
             let parts: Vec<&str> = cmd.split_whitespace().collect();
@@ -339,18 +336,16 @@ impl Mode for AppsMode {
 
     fn record_selection(&mut self, query: &str, item: &Item) {
         // Rate limiting: 5 selections per second max
-        if let Some(last) = self.last_action_time {
-            if last.elapsed() < std::time::Duration::from_millis(200) {
+        if let Some(last) = self.last_action_time
+            && last.elapsed() < std::time::Duration::from_millis(200) {
                 return;
             }
-        }
         self.last_action_time = Some(std::time::Instant::now());
 
-        if let Some(ref mut tracker) = self.frequency_tracker {
-            if let Err(e) = tracker.record_selection(query, &item.id) {
+        if let Some(ref mut tracker) = self.frequency_tracker
+            && let Err(e) = tracker.record_selection(query, &item.id) {
                 tracing::error!("Failed to record selection tracking: {}", e);
             }
-        }
     }
 }
 

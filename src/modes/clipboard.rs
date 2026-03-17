@@ -156,7 +156,7 @@ impl ClipboardMode {
         let xdg = BaseDirectories::with_prefix("latui");
         let path = xdg
             .place_data_file("clipboard_history.json")
-            .map_err(|e| LatuiError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            .map_err(|e| LatuiError::Io(std::io::Error::other(e)))?;
 
         self.history_path = Some(path.clone());
 
@@ -178,12 +178,11 @@ impl ClipboardMode {
         }
 
         // Size sanity check before reading.
-        if let Ok(meta) = std::fs::metadata(&path) {
-            if meta.len() > MAX_HISTORY_FILE_BYTES {
+        if let Ok(meta) = std::fs::metadata(&path)
+            && meta.len() > MAX_HISTORY_FILE_BYTES {
                 tracing::warn!("Clipboard history file too large — discarding");
                 return Ok(());
             }
-        }
 
         match std::fs::read_to_string(&path) {
             Ok(data) => match serde_json::from_str::<Vec<ClipEntry>>(&data) {
@@ -225,18 +224,23 @@ impl ClipboardMode {
 
         let entries: Vec<ClipEntry> = self.history.iter().cloned().collect();
         let json = serde_json::to_string_pretty(&entries)
-            .map_err(|e| LatuiError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            .map_err(|e| LatuiError::Io(std::io::Error::other(e)))?;
 
-        std::fs::write(&path, json)?;
+        // Atomic write via temp file
+        let mut tmp_path = path.clone();
+        tmp_path.set_extension("tmp");
+        std::fs::write(&tmp_path, json)?;
 
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
             let _ = std::fs::set_permissions(
-                &path,
+                &tmp_path,
                 std::fs::Permissions::from_mode(0o600),
             );
         }
+
+        std::fs::rename(&tmp_path, &path)?;
 
         self.dirty = false;
         tracing::debug!(
@@ -465,6 +469,13 @@ impl ClipboardMode {
     }
 }
 
+impl Default for ClipboardMode {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+
 // ─── Mode trait implementation ────────────────────────────────────────────────
 
 impl Mode for ClipboardMode {
@@ -479,6 +490,8 @@ impl Mode for ClipboardMode {
     fn description(&self) -> &str {
         "Clipboard History"
     }
+
+    fn stays_open(&self) -> bool { true }
 
     // ── load ──────────────────────────────────────────────────────────────
 
@@ -548,12 +561,11 @@ impl Mode for ClipboardMode {
     /// The content is taken directly from `item.metadata` (the raw clip text).
     fn execute(&mut self, item: &Item) -> Result<(), LatuiError> {
         // Rate-limit: prevent double-pastes from key bounce.
-        if let Some(last) = self.last_action_time {
-            if last.elapsed() < std::time::Duration::from_millis(500) {
+        if let Some(last) = self.last_action_time
+            && last.elapsed() < std::time::Duration::from_millis(500) {
                 tracing::warn!("Rate-limiting clipboard paste");
                 return Ok(());
             }
-        }
         self.last_action_time = Some(Instant::now());
 
         let content = item
@@ -581,11 +593,10 @@ impl Mode for ClipboardMode {
 
     fn record_selection(&mut self, _query: &str, item: &Item) {
         // Rate-limit.
-        if let Some(last) = self.last_action_time {
-            if last.elapsed() < std::time::Duration::from_millis(200) {
+        if let Some(last) = self.last_action_time
+            && last.elapsed() < std::time::Duration::from_millis(200) {
                 return;
             }
-        }
         self.last_action_time = Some(Instant::now());
 
         // Log at trace level only — never log actual clipboard content.
@@ -634,11 +645,10 @@ impl Mode for ClipboardMode {
 
 impl Drop for ClipboardMode {
     fn drop(&mut self) {
-        if self.dirty {
-            if let Err(e) = self.save_history() {
+        if self.dirty
+            && let Err(e) = self.save_history() {
                 tracing::error!("Failed to save clipboard history on drop: {}", e);
             }
-        }
     }
 }
 

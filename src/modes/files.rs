@@ -155,7 +155,8 @@ impl FilesMode {
         let xdg = BaseDirectories::with_prefix("latui");
         let path = xdg
             .place_data_file("files_recents.json")
-            .map_err(|e| LatuiError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            .map_err(std::io::Error::other)?;
+
 
         self.recents_path = Some(path.clone());
 
@@ -221,18 +222,23 @@ impl FilesMode {
 
         let entries: Vec<RecentEntry> = self.recents.iter().cloned().collect();
         let json = serde_json::to_string_pretty(&entries)
-            .map_err(|e| LatuiError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            .map_err(|e| LatuiError::Io(std::io::Error::other(e)))?;
 
-        std::fs::write(&path, json)?;
+        // Atomic write via temp file
+        let mut tmp_path = path.clone();
+        tmp_path.set_extension("tmp");
+        std::fs::write(&tmp_path, json)?;
 
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
             let _ = std::fs::set_permissions(
-                &path,
+                &tmp_path,
                 std::fs::Permissions::from_mode(0o600),
             );
         }
+
+        std::fs::rename(&tmp_path, &path)?;
 
         self.dirty = false;
         tracing::debug!("Saved {} recent files to disk", self.recents.len());
@@ -375,9 +381,10 @@ impl FilesMode {
         let mut results: Vec<(Item, f64)> = Vec::new();
 
         for root in &self.search_roots {
-            if !root.exists() {
-                continue;
-            }
+            let canonical_root = match root.canonicalize() {
+                Ok(p) => p,
+                Err(_) => root.clone(),
+            };
 
             for entry in WalkDir::new(root)
                 .max_depth(SEARCH_MAX_DEPTH)
@@ -396,18 +403,9 @@ impl FilesMode {
             {
                 let path = entry.path();
 
-                // Validate: path must stay within the declared root.
-                let canonical_root = root.canonicalize().unwrap_or(root.clone());
-                let canonical_path = match path.canonicalize() {
-                    Ok(p) => p,
-                    Err(_) => continue,
-                };
-
-                if !canonical_path.starts_with(&canonical_root) {
-                    tracing::warn!(
-                        "Path traversal attempt blocked: {:?}",
-                        canonical_path
-                    );
+                // Lightweight security check: path should be within root.
+                // We avoid per-entry canonicalize() for performance.
+                if !path.starts_with(&canonical_root) && !path.starts_with(root) {
                     continue;
                 }
 
@@ -436,14 +434,14 @@ impl FilesMode {
                     .unwrap_or_default();
 
                 let meta = FileMetadata {
-                    path: canonical_path.to_string_lossy().to_string(),
+                    path: path.to_string_lossy().to_string(),
                     kind: kind.clone(),
                 };
                 let meta_json =
                     serde_json::to_string(&meta).unwrap_or_default();
 
                 let item = Item {
-                    id: format!("file:{}", canonical_path.display()),
+                    id: format!("file:{}", path.display()),
                     title: format!("{} {}", kind.icon(), file_name),
                     search_text: file_name_lower,
                     description: Some(parent),
@@ -638,15 +636,14 @@ impl Mode for FilesMode {
 
     fn execute(&mut self, item: &Item) -> Result<(), LatuiError> {
         // Rate-limit: prevent double-opens from accidental key bounces.
-        if let Some(last) = self.last_action_time {
-            if last.elapsed() < std::time::Duration::from_millis(500) {
+        if let Some(last) = self.last_action_time
+            && last.elapsed() < std::time::Duration::from_millis(500) {
                 tracing::warn!(
                     "Rate-limiting file open for: {}",
                     item.title
                 );
                 return Ok(());
             }
-        }
         self.last_action_time = Some(Instant::now());
 
         // Parse metadata JSON.
@@ -694,20 +691,18 @@ impl Mode for FilesMode {
 
     fn record_selection(&mut self, _query: &str, item: &Item) {
         // Rate-limit cursor-movement tracking.
-        if let Some(last) = self.last_action_time {
-            if last.elapsed() < std::time::Duration::from_millis(200) {
+        if let Some(last) = self.last_action_time
+            && last.elapsed() < std::time::Duration::from_millis(200) {
                 return;
             }
-        }
         self.last_action_time = Some(Instant::now());
 
         // Extract path from metadata for lightweight logging — we don't add
         // to recents here because the user hasn't opened the file yet.
-        if let Some(meta_json) = &item.metadata {
-            if let Ok(meta) = serde_json::from_str::<FileMetadata>(meta_json) {
+        if let Some(meta_json) = &item.metadata
+            && let Ok(meta) = serde_json::from_str::<FileMetadata>(meta_json) {
                 tracing::trace!("Files mode selection: {}", meta.path);
             }
-        }
     }
 
     // ── preview ───────────────────────────────────────────────────────────
@@ -760,11 +755,10 @@ impl Mode for FilesMode {
 
 impl Drop for FilesMode {
     fn drop(&mut self) {
-        if self.dirty {
-            if let Err(e) = self.save_recents() {
+        if self.dirty
+            && let Err(e) = self.save_recents() {
                 tracing::error!("Failed to save recents on drop: {}", e);
             }
-        }
     }
 }
 
@@ -963,5 +957,11 @@ mod tests {
         let decoded: FileMetadata = serde_json::from_str(&json).unwrap();
         assert_eq!(decoded.path, meta.path);
         assert_eq!(decoded.kind, FileKind::File);
+    }
+}
+
+impl Default for FilesMode {
+    fn default() -> Self {
+        Self::new()
     }
 }

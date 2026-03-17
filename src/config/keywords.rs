@@ -5,6 +5,12 @@ pub struct KeywordMapper {
     mappings: HashMap<String, Vec<String>>,
 }
 
+impl Default for KeywordMapper {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl KeywordMapper {
     pub fn new() -> Self {
         Self {

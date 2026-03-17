@@ -228,7 +228,6 @@ static EMOJIS: &[EmojiRow] = &[
     ("🍜","steaming bowl",&["noodle","ramen","food","soup","japanese"],"food"),
     ("🍦","soft ice cream",&["ice cream","dessert","sweet","cone","cold"],"food"),
     ("🎂","birthday cake",&["cake","birthday","celebrate","candles","sweet"],"food"),
-    ("🍕","pizza",&["pizza","food","slice","italian","cheese"],"food"),
     ("☕","hot beverage",&["coffee","tea","hot","drink","cafe","morning"],"food"),
     ("🍺","beer mug",&["beer","drink","alcohol","cheers","pub"],"food"),
     ("🍷","wine glass",&["wine","drink","alcohol","red","cheers"],"food"),
@@ -411,7 +410,7 @@ impl EmojisMode {
         use xdg::BaseDirectories;
         let xdg = BaseDirectories::with_prefix("latui");
         let path = xdg.place_data_file("emoji_recents.json")
-            .map_err(|e| LatuiError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            .map_err(|e| LatuiError::Io(std::io::Error::other(e)))?;
 
         self.recents_path = Some(path.clone());
 
@@ -426,17 +425,15 @@ impl EmojisMode {
 
         if !path.exists() { return Ok(()); }
 
-        if let Ok(meta) = std::fs::metadata(&path) {
-            if meta.len() > 512 * 1024 { return Ok(()); }
-        }
+        if let Ok(meta) = std::fs::metadata(&path)
+            && meta.len() > 512 * 1024 { return Ok(()); }
 
-        if let Ok(data) = std::fs::read_to_string(&path) {
-            if let Ok(mut entries) = serde_json::from_str::<Vec<RecentEmoji>>(&data) {
+        if let Ok(data) = std::fs::read_to_string(&path)
+            && let Ok(mut entries) = serde_json::from_str::<Vec<RecentEmoji>>(&data) {
                 entries.truncate(MAX_RECENTS);
                 self.recents = entries.into();
                 tracing::info!("Loaded {} emoji recents", self.recents.len());
             }
-        }
         Ok(())
     }
 
@@ -445,13 +442,19 @@ impl EmojisMode {
         let path = match &self.recents_path { Some(p) => p.clone(), None => return Ok(()) };
         let entries: Vec<RecentEmoji> = self.recents.iter().cloned().collect();
         let json = serde_json::to_string_pretty(&entries)
-            .map_err(|e| LatuiError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
-        std::fs::write(&path, json)?;
+            .map_err(|e| LatuiError::Io(std::io::Error::other(e)))?;
+        
+        let mut tmp_path = path.clone();
+        tmp_path.set_extension("tmp");
+        std::fs::write(&tmp_path, json)?;
+
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+            let _ = std::fs::set_permissions(&tmp_path, std::fs::Permissions::from_mode(0o600));
         }
+        
+        std::fs::rename(&tmp_path, &path)?;
         self.dirty = false;
         Ok(())
     }
@@ -570,12 +573,21 @@ impl EmojisMode {
     }
 }
 
+impl Default for EmojisMode {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+
 // ── Mode impl ──────────────────────────────────────────────────────────────
 
 impl Mode for EmojisMode {
     fn name(&self) -> &str { "emojis" }
     fn icon(&self) -> &str { "😀" }
     fn description(&self) -> &str { "Emoji Picker" }
+
+    fn stays_open(&self) -> bool { true }
 
     fn load(&mut self) -> Result<(), LatuiError> {
         tracing::debug!("Loading emojis mode");
@@ -610,12 +622,11 @@ impl Mode for EmojisMode {
     }
 
     fn execute(&mut self, item: &Item) -> Result<(), LatuiError> {
-        if let Some(last) = self.last_action_time {
-            if last.elapsed() < std::time::Duration::from_millis(500) {
+        if let Some(last) = self.last_action_time
+            && last.elapsed() < std::time::Duration::from_millis(500) {
                 tracing::warn!("Rate-limiting emoji copy");
                 return Ok(());
             }
-        }
         self.last_action_time = Some(Instant::now());
 
         let glyph = item.metadata.as_ref()
@@ -659,11 +670,10 @@ impl Mode for EmojisMode {
 
 impl Drop for EmojisMode {
     fn drop(&mut self) {
-        if self.dirty {
-            if let Err(e) = self.save_recents() {
+        if self.dirty
+            && let Err(e) = self.save_recents() {
                 tracing::error!("Failed to save emoji recents on drop: {}", e);
             }
-        }
     }
 }
 

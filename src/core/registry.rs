@@ -110,3 +110,9 @@ impl ModeRegistry {
         &self.mode_order
     }
 }
+
+impl Default for ModeRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}

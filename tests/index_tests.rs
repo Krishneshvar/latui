@@ -1,5 +1,5 @@
 use latui::index::trie::{Trie, MultiTokenTrie};
-use latui::core::{item::Item, action::Action, searchable_item::SearchableItem};
+use latui::core::{item::Item, searchable_item::SearchableItem};
 
 fn create_test_item(name: &str, keywords: Vec<&str>, categories: Vec<&str>) -> SearchableItem {
     let item = Item {
@@ -7,18 +7,21 @@ fn create_test_item(name: &str, keywords: Vec<&str>, categories: Vec<&str>) -> S
         title: name.to_string(),
         search_text: name.to_lowercase(),
         description: None,
-        action: Action::Launch("test".to_string()),
+        metadata: None,
     };
 
-    SearchableItem::new(
-        item,
-        name.to_string(),
-        keywords.iter().map(|s| s.to_string()).collect(),
-        categories.iter().map(|s| s.to_string()).collect(),
-        None,
-        None,
-        name.to_lowercase(),
-    ).unwrap()
+    let mut searchable = SearchableItem::new(item);
+    searchable = searchable.with_field("name", name, 10.0);
+    
+    for kw in keywords {
+        searchable = searchable.with_field("keyword", kw, 8.0);
+    }
+    
+    for cat in categories {
+        searchable = searchable.with_field("category", cat, 5.0);
+    }
+    
+    searchable
 }
 
 #[test]

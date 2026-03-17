@@ -1,71 +1,93 @@
-# LaTUI: The Advanced TUI Launcher
+# LaTUI: The Ultra-Fast Multi-Mode Launcher
 
 <p align="center">
-  <b>A blazing-fast, modular, and extensible terminal-based launcher designed for Wayland environments.</b>
+  <b>A blazing-fast, modular, and extensible productivity hub built with Rust and Ratatui.</b>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Language-Rust-orange?style=for-the-badge&logo=rust" alt="Rust" />
+  <img src="https://img.shields.io/badge/Framework-Ratatui-red?style=for-the-badge&logo=rust" alt="Ratatui" />
+  <img src="https://img.shields.io/badge/License-GPL--3.0-blue?style=for-the-badge" alt="GPL-3.0" />
 </p>
 
 ---
 
-## Overview
+## 🚀 Overview
 
-**LaTUI** (Launcher TUI) is a high-performance alternative to traditional launchers like Rofi or Wofi. Written in Rust and built on top of the **Ratatui** framework, it provides a sleek, keyboard-centric interface for launching applications, searching files, and managing workflows with sub-50ms latency.
+**LaTUI** (Launcher TUI) is more than just a simple application launcher. It’s an ultra-high performance terminal interface designed for sub-50ms latency, offering a unified, keyboard-centric workflow for everything from launching software to managing your clipboard and searching your filesystem.
 
-LaTUI is compositor-agnostic and focused on extreme performance, featuring a hybrid search engine that combines trie-based prefix filtering with Levenshtein-based typo tolerance.
-
-## Key Features
-
-- **Extreme Performance**: Sub-50ms startup time and <10ms search latency.
-- **Hybrid Search Engine**:
-    - **Trie-Based Filtering**: Efficient O(m) candidate reduction for large datasets.
-    - **Damerau-Levenshtein**: Smart typo tolerance for fast, natural searching.
-    - **Semantic Ranking**: Results weighted by name, keywords, categories, and descriptions.
-- **Usage-Aware Ranking**: Frequency and recency-based boost (SQLite backend) that learns from your habits.
-- **Plugin-Based Architecture**: Modular "Modes" for different tasks (Apps, Run, Files, Clipboard, Emojis).
-- **Modern TUI**: Beautiful, responsive interface using Ratatui.
-- **TOML-First Configuration**: Human-readable config files in `~/.config/latui/`.
+Built with a **Strategy-Pattern** architecture, LaTUI is compositor-agnostic and uses a hybrid search engine combining **O(m) Trie-based prefix filtering** with **Levenshtein typo tolerance** and **SQLite-backed frequency tracking**.
 
 ---
 
-## Architecture
+## ✨ Key Features
 
-LaTUI is designed for extensibility. Every functionality is a **Mode** that implements a common trait, allowing for isolated development and user-defined custom modes.
+- 🏎️ **Extreme Performance**: Built for speed with Rust, achieving <50ms startup and <10ms search latency.
+- 🧠 **Intelligent Ranking**: Learns your habits using SQLite to track usage frequency and recency.
+- 🧩 **Modular Architecture**: Every feature is a "Mode"—add or remove functionality with zero core logic changes.
+- 🔍 **Hybrid Search Engine**: Smart prefix matching + Damerau-Levenshtein typo tolerance.
+- 🎨 **Modern Interface**: Premium, responsive TUI with tabs, previews, and smooth layouts.
+- 📄 **Config-First**: Fully customizable via `~/.config/latui/config.toml`.
+
+---
+
+## 📂 Available Modes
+
+LaTUI is organized into specialized **Modes**, each optimized for specific tasks. Use `Tab` to switch between them instantly.
+
+### 🚀 Apps Mode (Launcher)
+The core launcher experience. Index your `.desktop` files with keyword-aware search (e.g., search "browser" for Firefox). Features all-time frequency and recency boosting.
+
+### 📁 Files Mode (Navigator)
+Search and navigate your filesystem at lightning speeds. Uses the high-performance `ignore` crate for traversal and includes **text file previews**.
+
+### 🐚 Run Mode (Shell)
+A persistent shell command executor with history deduplication and fuzzy searching. No more searching through shell history; find it instantly in LaTUI.
+
+### 📋 Clipboard Mode (Manager)
+Manage your clipboard history across Wayland (`wl-clipboard`) and X11 (`xclip`). Features persistent storage and privacy-aware `0600` file permissions.
+
+### 😃 Emojis Mode (Picker)
+A fast, keyword-searchable emoji picker. Copy any of the 240+ embedded emojis to your clipboard instantly with frequency-based sorting.
+
+---
+
+## 🏗️ Architecture
+
+LaTUI follows a **loosely coupled Strategy Pattern** where the interaction between the UI and functionality is mediated by a common trait. This allows for massive extensibility and isolation of concerns.
 
 ```mermaid
 graph TD
     UI[Ratatui UI] --> Registry[Mode Registry]
-    Registry --> Apps[Apps Mode]
-    Registry --> Files[Files Mode]
-    Registry --> Run[Run Mode]
-    Registry --> Custom[Custom TOML Modes]
+    Registry --> ModeTrait[Mode Trait Implementation]
     
-    Apps --> Index[Trie Search Index]
-    Index --> DB[(Usage Tracking DB)]
-```
+    subgraph "Modes (Strategies)"
+      ModeTrait --> Apps[Apps Mode]
+      ModeTrait --> Files[Files Mode]
+      ModeTrait --> Run[Run Mode]
+      ModeTrait --> Clipboard[Clipboard Mode]
+      ModeTrait --> Emojis[Emojis Mode]
+    end
 
-For more details, see the [Architecture Documentation](docs/architecture.md).
+    subgraph "Backends"
+      Apps & Files & Emojis --> Engine[Search Engine Trie + Fuzzy]
+      Apps & Run & Files --> SQL[(SQLite Tracking DB)]
+      Clipboard --> SysClip{System Clipboard}
+    end
+```
 
 ---
 
-## Installation
-
-### Arch Linux (AUR)
-If you are on Arch, you can use `yay` or `paru`:
-```bash
-yay -S latui
-```
-
----
-
-## Configuration
+## ⚙️ Configuration
 
 LaTUI looks for configuration in `~/.config/latui/config.toml`.
 
-**Example `config.toml`:**
+**Example Configuration:**
 ```toml
 [general]
 default_mode = "apps"
 theme = "dark"
-max_results = 10
+max_results = 15
 
 [keybindings]
 switch_mode = "Tab"
@@ -77,26 +99,48 @@ cancel = "Esc"
 [modes.apps]
 enabled = true
 cache_ttl = 3600
+
+[modes.files]
+base_path = "~/"
+show_previews = true
 ```
 
 ---
 
-## Roadmap & Status
+## 📅 Roadmap & Progress
 
 | Phase | Description | Status |
-| :--- | :--- | :--- |
-| **Phase 1** | Core search & Multi-field indexing | ✅ Done |
-| **Phase 2** | Typo tolerance & Usage tracking | ✅ Done |
-| **Phase 3** | Files & Run Modes | 🏗️ In Progress |
-| **Phase 4** | Performance & Trie optimization | ✅ Done |
-| **Phase 5** | UI Polish & Previews | 🗓️ Planned |
+| :--- | :--- | :---: |
+| **Phase 1** | Core Search & Multi-field Indexing | ✅ |
+| **Phase 2** | Typo Tolerance & Basic UI | ✅ |
+| **Phase 3** | **Run Mode** Implementation | ✅ |
+| **Phase 4** | **Emojis Mode** & Keyword Search | ✅ |
+| **Phase 5** | **Files Mode** & Live Previews | ✅ |
+| **Phase 6** | **Clipboard Mode** & Wayland/X11 | ✅ |
+| **Phase 7** | Themes & Advanced Configuration | 🏗️ |
 
 ---
 
-## License
+## 📦 Installation
 
-This project is licensed under the **GPL-3.0-only** license. See the [LICENSE](LICENSE) file for details.
+### Arch Linux (AUR)
+```bash
+yay -S latui
+```
 
-## Contributing
+### From Source
+```bash
+git clone https://github.com/Krishneshvar/latui
+cd latui
+cargo build --release
+```
 
-Contributions are welcome! Feel free to open issues or pull requests. Please ensure that all new features include appropriate tests in the `tests/` directory.
+---
+
+## 📜 License & Contributing
+
+Licensed under the **GPL-3.0**. Contributions are welcome! Please ensure all new logic follows the Strategy Pattern and includes appropriate unit tests.
+
+---
+
+<p align="center">Made with ❤️ for the Linux Community</p>

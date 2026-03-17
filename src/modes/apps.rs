@@ -132,6 +132,7 @@ impl AppsMode {
                             title: name.clone(),
                             search_text: name.to_lowercase(),
                             description: description.clone(),
+                            icon: None,
                             metadata: Some(exec.clone()),
                         };
 
@@ -348,6 +349,8 @@ impl Mode for AppsMode {
             }
     }
 }
+
+
 
 fn sanitize_exec(exec: &str) -> String {
 

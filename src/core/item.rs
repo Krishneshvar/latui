@@ -9,6 +9,9 @@ pub struct Item {
 
     pub description: Option<String>,
 
+    #[serde(default)]
+    pub icon: Option<String>,
+
     /// Mode-specific metadata needed for execution
     pub metadata: Option<String>,
 }

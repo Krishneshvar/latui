@@ -314,6 +314,7 @@ impl ClipboardMode {
                     title: title.clone(),
                     search_text: entry.content.to_lowercase(),
                     description: Some(description),
+                    icon: None,
                     // Metadata IS the content — simple and direct.
                     metadata: Some(entry.content.clone()),
                 };
@@ -354,6 +355,7 @@ impl ClipboardMode {
                     title,
                     search_text: entry.content.to_lowercase(),
                     description: Some(description),
+                    icon: None,
                     metadata: Some(entry.content.clone()),
                 };
 
@@ -858,6 +860,7 @@ mod tests {
             title: "hello".into(),
             search_text: "hello".into(),
             description: None,
+            icon: None,
             metadata: Some("hello world".into()),
         };
         let preview = m.preview(&item).unwrap();
@@ -877,6 +880,7 @@ mod tests {
             title: "multi".into(),
             search_text: "multi".into(),
             description: None,
+            icon: None,
             metadata: Some(content),
         };
         let preview = m.preview(&item).unwrap();
@@ -891,6 +895,7 @@ mod tests {
             title: "empty".into(),
             search_text: "empty".into(),
             description: None,
+            icon: None,
             metadata: None,
         };
         assert!(m.preview(&item).is_none());

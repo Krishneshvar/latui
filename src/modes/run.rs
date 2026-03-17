@@ -211,6 +211,7 @@ impl RunMode {
                         entry.execution_count,
                         if entry.execution_count == 1 { "" } else { "s" }
                     )),
+                    icon: None,
                     metadata: Some(entry.command.clone()),
                 };
                 
@@ -236,6 +237,7 @@ impl RunMode {
                         entry.execution_count,
                         if entry.execution_count == 1 { "" } else { "s" }
                     )),
+                    icon: None,
                     metadata: Some(entry.command.clone()),
                 };
                 
@@ -352,6 +354,7 @@ impl Mode for RunMode {
             title: q.to_string(),
             search_text: q.to_lowercase(),
             description: Some("Execute command".to_string()),
+            icon: None,
             metadata: Some(q.to_string()),
         };
         results.push((direct_item, 10000.0)); // Highest priority

@@ -79,10 +79,11 @@ fn render_results_list(frame: &mut Frame, app: &mut AppState, area: ratatui::lay
         .filtered_items
         .iter()
         .map(|i| {
-            let content = if let Some(ref desc) = i.description {
-                format!("{} - {}", i.title, desc)
-            } else {
-                i.title.clone()
+            let content = match (&i.icon, &i.description) {
+                (Some(icon), Some(desc)) => format!("{} {} - {}", icon, i.title, desc),
+                (Some(icon), None) => format!("{} {}", icon, i.title),
+                (None, Some(desc)) => format!("{} - {}", i.title, desc),
+                (None, None) => i.title.clone(),
             };
             ListItem::new(content)
         })

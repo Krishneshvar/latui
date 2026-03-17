@@ -299,9 +299,10 @@ impl FilesMode {
 
                 let item = Item {
                     id: format!("file:{}", entry.path),
-                    title: format!("{} {}", kind.icon(), file_name),
+                    title: file_name.clone(),
                     search_text: file_name.to_lowercase(),
                     description: Some(parent.clone()),
+                    icon: Some(kind.icon().to_string()),
                     metadata: Some(meta_json),
                 };
 
@@ -348,9 +349,10 @@ impl FilesMode {
 
                 let item = Item {
                     id: format!("file:{}", entry.path),
-                    title: format!("{} {}", kind.icon(), file_name),
+                    title: file_name.clone(),
                     search_text: file_name.to_lowercase(),
                     description: Some(parent),
+                    icon: Some(kind.icon().to_string()),
                     metadata: Some(meta_json),
                 };
 
@@ -442,9 +444,10 @@ impl FilesMode {
 
                 let item = Item {
                     id: format!("file:{}", path.display()),
-                    title: format!("{} {}", kind.icon(), file_name),
+                    title: file_name.to_string(),
                     search_text: file_name_lower,
                     description: Some(parent),
+                    icon: Some(kind.icon().to_string()),
                     metadata: Some(meta_json),
                 };
 
@@ -902,6 +905,7 @@ mod tests {
             title: "notes.txt".to_string(),
             search_text: "notes.txt".to_string(),
             description: None,
+            icon: Some("📄".to_string()),
             metadata: Some(serde_json::to_string(&meta).unwrap()),
         };
 
@@ -929,6 +933,7 @@ mod tests {
             title: "tmpdir".to_string(),
             search_text: "tmpdir".to_string(),
             description: None,
+            icon: Some("📁".to_string()),
             metadata: Some(serde_json::to_string(&meta).unwrap()),
         };
 

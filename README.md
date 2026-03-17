@@ -12,7 +12,7 @@
 
 ---
 
-## 🚀 Overview
+## Overview
 
 **LaTUI** (Launcher TUI) is more than just a simple application launcher. It’s an ultra-high performance terminal interface designed for sub-50ms latency, offering a unified, keyboard-centric workflow for everything from launching software to managing your clipboard and searching your filesystem.
 
@@ -20,39 +20,39 @@ Built with a **Strategy-Pattern** architecture, LaTUI is compositor-agnostic and
 
 ---
 
-## ✨ Key Features
+## Key Features
 
-- 🏎️ **Extreme Performance**: Built for speed with Rust, achieving <50ms startup and <10ms search latency.
-- 🧠 **Intelligent Ranking**: Learns your habits using SQLite to track usage frequency and recency.
-- 🧩 **Modular Architecture**: Every feature is a "Mode"—add or remove functionality with zero core logic changes.
-- 🔍 **Hybrid Search Engine**: Smart prefix matching + Damerau-Levenshtein typo tolerance.
-- 🎨 **Modern Interface**: Premium, responsive TUI with tabs, previews, and smooth layouts.
-- 📄 **Config-First**: Fully customizable via `~/.config/latui/config.toml`.
+- **Extreme Performance**: Built for speed with Rust, achieving <50ms startup and <10ms search latency.
+- **Intelligent Ranking**: Learns your habits using SQLite to track usage frequency and recency.
+- **Modular Architecture**: Every feature is a "Mode"—add or remove functionality with zero core logic changes.
+- **Hybrid Search Engine**: Smart prefix matching + Damerau-Levenshtein typo tolerance.
+- **Modern Interface**: Premium, responsive TUI with tabs, previews, and smooth layouts.
+- **Config-First**: Fully customizable via `~/.config/latui/config.toml`.
 
 ---
 
-## 📂 Available Modes
+## Available Modes
 
 LaTUI is organized into specialized **Modes**, each optimized for specific tasks. Use `Tab` to switch between them instantly.
 
-### 🚀 Apps Mode (Launcher)
+### Apps Mode (Launcher)
 The core launcher experience. Index your `.desktop` files with keyword-aware search (e.g., search "browser" for Firefox). Features all-time frequency and recency boosting.
 
-### 📁 Files Mode (Navigator)
+### Files Mode (Navigator)
 Search and navigate your filesystem at lightning speeds. Uses the high-performance `ignore` crate for traversal and includes **text file previews**.
 
-### 🐚 Run Mode (Shell)
+### Run Mode (Shell)
 A persistent shell command executor with history deduplication and fuzzy searching. No more searching through shell history; find it instantly in LaTUI.
 
-### 📋 Clipboard Mode (Manager)
+### Clipboard Mode (Manager)
 Manage your clipboard history across Wayland (`wl-clipboard`) and X11 (`xclip`). Features persistent storage and privacy-aware `0600` file permissions.
 
-### 😃 Emojis Mode (Picker)
+### Emojis Mode (Picker)
 A fast, keyword-searchable emoji picker. Copy any of the 240+ embedded emojis to your clipboard instantly with frequency-based sorting.
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
 LaTUI follows a **loosely coupled Strategy Pattern** where the interaction between the UI and functionality is mediated by a common trait. This allows for massive extensibility and isolation of concerns.
 
@@ -78,7 +78,7 @@ graph TD
 
 ---
 
-## ⚙️ Configuration
+## Configuration
 
 LaTUI looks for configuration in `~/.config/latui/config.toml`.
 
@@ -107,7 +107,7 @@ show_previews = true
 
 ---
 
-## 📅 Roadmap & Progress
+## Roadmap & Progress
 
 | Phase | Description | Status |
 | :--- | :--- | :---: |
@@ -121,7 +121,7 @@ show_previews = true
 
 ---
 
-## 📦 Installation
+## Installation
 
 ### Arch Linux (AUR)
 ```bash
@@ -137,7 +137,7 @@ cargo build --release
 
 ---
 
-## 📜 License & Contributing
+## License & Contributing
 
 Licensed under the **GPL-3.0**. Contributions are welcome! Please ensure all new logic follows the Strategy Pattern and includes appropriate unit tests.
 

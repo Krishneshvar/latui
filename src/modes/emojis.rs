@@ -487,6 +487,7 @@ impl EmojisMode {
                 title,
                 search_text: name.to_lowercase(),
                 description: Some(format!("{} · {}", category, all_keywords)),
+                icon: None,
                 metadata: Some(glyph.to_string()),
             };
 
@@ -518,6 +519,7 @@ impl EmojisMode {
                     title: format!("{} {}", glyph, name),
                     search_text: name.to_lowercase(),
                     description: Some(format!("{} · {}", category, all_kw)),
+                    icon: None,
                     metadata: Some(glyph.to_string()),
                 };
                 let score = (limit - idx) as f64 * 10.0 + (entry.use_count as f64 + 1.0).ln() * 15.0;
@@ -532,6 +534,7 @@ impl EmojisMode {
                     title: format!("{} {}", glyph, name),
                     search_text: name.to_lowercase(),
                     description: Some(format!("{} · {}", keywords.join(" "), category)),
+                    icon: None,
                     metadata: Some(glyph.to_string()),
                 }
             }).collect();
@@ -801,6 +804,7 @@ mod tests {
             title: "🔥 fire".into(),
             search_text: "fire".into(),
             description: None,
+            icon: None,
             metadata: Some("🔥".into()),
         };
         let p = m.preview(&item).unwrap();

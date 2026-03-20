@@ -131,23 +131,17 @@ pub fn load_user_settings() -> AppConfig {
             // Re-parse the user config to identify what was actually there
             // Reuse the content we already read
             if let Some(content) = raw_toml
-                && let Ok(toml_value) = toml::from_str::<toml::Value>(&content) {
-                    let mut final_config = theme_cfg;
+                && let Ok(user_toml_value) = toml::from_str::<toml::Value>(&content) {
+                    // Start with theme defaults
+                    let mut final_toml = toml::Value::try_from(theme_cfg.clone()).unwrap_or(toml::Value::Table(Default::default()));
                     
-                    if let Some(general) = toml_value.get("general")
-                        && let Ok(c) = general.clone().try_into() { final_config.general = c; }
-                    if let Some(layout) = toml_value.get("layout")
-                      && let Ok(c) = layout.clone().try_into() { final_config.layout = c; }
-                    if let Some(navbar) = toml_value.get("navbar")
-                        && let Ok(c) = navbar.clone().try_into() { final_config.navbar = c; }
-                    if let Some(search) = toml_value.get("search")
-                        && let Ok(c) = search.clone().try_into() { final_config.search = c; }
-                    if let Some(results) = toml_value.get("results")
-                        && let Ok(c) = results.clone().try_into() { final_config.results = c; }
-                    if let Some(modes) = toml_value.get("modes")
-                        && let Ok(c) = modes.clone().try_into() { final_config.modes = c; }
+                    // Deep merge user overrides on top of theme
+                    crate::core::utils::merge_toml(&mut final_toml, user_toml_value);
                     
-                    return final_config;
+                    // Convert back to AppConfig
+                    if let Ok(merged_cfg) = final_toml.try_into() {
+                        return merged_cfg;
+                    }
                 }
             return theme_cfg;
         }

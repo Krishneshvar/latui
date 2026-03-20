@@ -7,7 +7,7 @@ use crate::tracking::frequency::FrequencyTracker;
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::path::PathBuf;
-use std::process::Command;
+
 use std::time::Instant;
 
 /// Maximum number of commands to keep in history
@@ -292,28 +292,20 @@ impl RunMode {
 
         tracing::info!("Executing command: {}", command);
 
-        // Spawn command in background
-        let child = Command::new(&self.shell).arg("-c").arg(command).spawn();
+        // Spawn command via centralized engine
+        crate::core::execution::ExecutionEngine::spawn_shell(command, &[])?;
 
-        match child {
-            Ok(_) => {
-                self.add_to_history(command);
+        self.add_to_history(command);
 
-                // Record in frequency tracker
-                if let Some(ref mut tracker) = self.frequency_tracker {
-                    let id = format!("cmd:{}", command);
-                    if let Err(e) = tracker.record_launch(&id) {
-                        tracing::error!("Failed to record command execution: {}", e);
-                    }
-                }
-
-                Ok(())
-            }
-            Err(e) => {
-                tracing::error!("Failed to execute command '{}': {}", command, e);
-                Err(LatuiError::Io(e))
+        // Record in frequency tracker
+        if let Some(ref mut tracker) = self.frequency_tracker {
+            let id = format!("cmd:{}", command);
+            if let Err(e) = tracker.record_launch(&id) {
+                tracing::error!("Failed to record command execution: {}", e);
             }
         }
+
+        Ok(())
     }
 }
 

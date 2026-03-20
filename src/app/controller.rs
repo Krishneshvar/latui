@@ -99,6 +99,10 @@ impl AppController {
                                         item.title,
                                         e
                                     );
+                                    crate::core::utils::notify_error(
+                                        &format!("Failed to launch {}", item.title),
+                                        &e.to_string()
+                                    );
                                 }
                             }
                         }

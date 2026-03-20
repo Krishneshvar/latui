@@ -14,7 +14,7 @@ use serde::Serialize;
 use std::collections::{HashSet, hash_map::DefaultHasher};
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+
 
 /// Apps launcher mode backed by freedesktop desktop entries.
 pub struct AppsMode {
@@ -547,28 +547,12 @@ impl Mode for AppsMode {
         }
 
         if let Some(cmd) = &item.metadata {
-            let parts: Vec<&str> = cmd.split_whitespace().collect();
-            if parts.is_empty() {
-                return Ok(());
-            }
-
-            let shell_chars = [
-                ';', '&', '|', '<', '>', '(', ')', '$', '`', '\\', '"', '\'', '*', '?', '[', ']',
-                '~', '!',
-            ];
-            let has_shell_chars = cmd.chars().any(|c| shell_chars.contains(&c));
-
-            let child = if !has_shell_chars {
-                Command::new(parts[0]).args(&parts[1..]).spawn()
-            } else {
-                tracing::warn!("Executing command with shell features: {}", cmd);
-                Command::new("sh").arg("-c").arg(cmd).spawn()
-            };
-
-            if let Err(e) = child {
-                tracing::error!("Failed to execute '{}': {}", cmd, e);
-                return Err(LatuiError::Io(e));
-            }
+            tracing::info!("AppsMode: launching '{}' via {}", item.title, cmd);
+            
+            // For desktop entries, we often have complex commands with shell features
+            // or we might want to just spawn the binary directly.
+            // Using spawn_shell allows supporting desktop file field codes if they were preserved.
+            crate::core::execution::ExecutionEngine::spawn_shell(cmd, &[])?;
         } else {
             tracing::warn!(
                 "Apps mode received item without metadata (command): {}",

@@ -860,6 +860,7 @@ dependencies = [
  "freedesktop-desktop-entry",
  "freedesktop-icons",
  "image",
+ "libc",
  "lru",
  "nucleo-matcher",
  "ratatui",

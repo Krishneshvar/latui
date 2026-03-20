@@ -18,6 +18,13 @@ pub enum LatuiError {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 
+    #[error("Execution error for '{command}': {source}")]
+    Execution {
+        command: String,
+        #[source]
+        source: std::io::Error,
+    },
+
     // ── Targeted string errors (only where no structured type fits) ───────
 
     /// XDG base-directory resolution failed. Stores the underlying message

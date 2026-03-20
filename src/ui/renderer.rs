@@ -423,7 +423,7 @@ fn resolve_desktop_icon_path(app: &mut AppState, item: &Item) -> Option<PathBuf>
     }
 
     let desktop_path = std::path::Path::new(&item.id);
-    let resolved = icons::resolve_icon_from_entry(&desktop_path);
+    let resolved = icons::resolve_icon_from_entry(desktop_path);
     app.desktop_icon_path_cache
         .put(item.id.clone(), resolved.clone());
     resolved

@@ -1,13 +1,15 @@
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
-    widgets::{Block, Borders, List, ListItem, Paragraph, Tabs},
+    style::Style,
+    widgets::{List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Tabs},
 };
 use ratatui_image::StatefulImage;
 
 use crate::app::state::AppState;
+use crate::config::theme::{ItemDisplay, NavbarPosition};
 use crate::core::item::Item;
+use crate::ui::style_resolver;
 use freedesktop_desktop_entry::DesktopEntry;
 use std::path::{Path, PathBuf};
 
@@ -15,108 +17,209 @@ use std::path::{Path, PathBuf};
 /// Draws the mode tabs, search input, and results list.
 pub fn draw(frame: &mut Frame, app: &mut AppState) {
     let size = frame.area();
+    let config = &app.config;
 
-    // Create layout with mode tabs at the top
+    // Apply margins
+    let inner_area = Rect::new(
+        size.x + config.layout.margin[3],
+        size.y + config.layout.margin[0],
+        size.width.saturating_sub(config.layout.margin[1] + config.layout.margin[3]),
+        size.height.saturating_sub(config.layout.margin[2] + config.layout.margin[0]),
+    );
+
+    let navbar_constraint = if config.navbar.visible {
+        Constraint::Length(config.layout.navbar_height)
+    } else {
+        Constraint::Length(0)
+    };
+
+    let search_constraint = if config.search.visible {
+        Constraint::Length(config.layout.search_height)
+    } else {
+        Constraint::Length(0)
+    };
+
+    let results_constraint = if config.results.visible {
+        Constraint::Min(config.layout.results_min)
+    } else {
+        Constraint::Length(0)
+    };
+
+    let constraints = match config.layout.navbar_position {
+        NavbarPosition::Top => [navbar_constraint, search_constraint, results_constraint],
+        NavbarPosition::Bottom => [results_constraint, search_constraint, navbar_constraint],
+    };
+
     let layout = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(3), // Mode tabs
-            Constraint::Length(3), // Search input
-            Constraint::Min(1),    // Results list
-        ])
-        .split(size);
+        .constraints(constraints)
+        .split(inner_area);
 
-    // Render mode tabs
-    render_mode_tabs(frame, app, layout[0]);
+    let (navbar_area, search_area, results_area) = match config.layout.navbar_position {
+        NavbarPosition::Top => (layout[0], layout[1], layout[2]),
+        NavbarPosition::Bottom => (layout[2], layout[1], layout[0]),
+    };
 
-    // Render search input
-    render_search_input(frame, app, layout[1]);
+    // Render components if visible
+    if config.navbar.visible {
+        render_mode_tabs(frame, app, navbar_area);
+    }
 
-    let is_apps_mode = app
-        .mode_registry
-        .get_active_mode()
-        .map(|mode| mode.name() == "apps")
-        .unwrap_or(false);
+    if config.search.visible {
+        render_search_input(frame, app, search_area);
+    }
 
-    if is_apps_mode && app.image_support.is_some() {
-        render_apps_results_list_with_inline_icons(frame, app, layout[2]);
-    } else {
-        render_results_list(frame, app, layout[2]);
+    if config.results.visible {
+        let is_apps_mode = app
+            .mode_registry
+            .get_active_mode()
+            .map(|mode| mode.name() == "apps")
+            .unwrap_or(false);
+
+        if is_apps_mode && app.image_support.is_some() {
+            render_apps_results_list_with_inline_icons(frame, app, results_area);
+        } else {
+            render_results_list(frame, app, results_area);
+        }
     }
 }
 
 /// Renders the mode selection tabs at the top of the interface.
-fn render_mode_tabs(frame: &mut Frame, app: &AppState, area: ratatui::layout::Rect) {
+fn render_mode_tabs(frame: &mut Frame, app: &AppState, area: Rect) {
     let tab_titles = app.mode_registry.get_tab_titles();
     let active_index = app.mode_registry.get_active_index();
+    let config = &app.config.navbar;
+
+    let block = style_resolver::resolve_block(&config.title, &config.border, &config.style);
+
+    let active_fg = config.tabs.active_fg.as_deref().unwrap_or_default();
+    let active_bg = config.tabs.active_bg.as_deref().unwrap_or_default();
 
     let tabs = Tabs::new(tab_titles)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title("LaTUI - Multi-Mode Launcher"),
-        )
+        .block(block)
         .select(active_index)
-        .style(Style::default().fg(Color::White))
+        .style(style_resolver::resolve_style(&config.style))
         .highlight_style(
             Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
+                .fg(style_resolver::parse_color(active_fg))
+                .bg(style_resolver::parse_color(active_bg))
+                .add_modifier(style_resolver::resolve_modifier(&config.tabs.active_modifier)),
         );
 
     frame.render_widget(tabs, area);
 }
 
 /// Renders the search input box with the current query.
-fn render_search_input(frame: &mut Frame, app: &AppState, area: ratatui::layout::Rect) {
+fn render_search_input(frame: &mut Frame, app: &AppState, area: Rect) {
+    let config = &app.config.search;
     let mode_name = if let Some(mode) = app.mode_registry.get_active_mode() {
         format!("{} {}", mode.icon(), mode.description())
     } else {
         "Search".to_string()
     };
 
-    let input = Paragraph::new(format!("> {}", app.query))
-        .block(Block::default().borders(Borders::ALL).title(mode_name))
-        .style(Style::default().fg(Color::White));
+    let prompt = &config.prompt_symbol;
+    let input_text = format!("{}{}", prompt, app.query);
+    
+    let block = style_resolver::resolve_block(&mode_name, &config.border, &config.style);
+
+    let mut input_style = style_resolver::resolve_style(&config.style);
+    if let Some(ref prompt_fg) = config.prompt_fg {
+        input_style = input_style.fg(style_resolver::parse_color(prompt_fg));
+    }
+
+    let input = Paragraph::new(input_text)
+        .block(block)
+        .style(input_style);
 
     frame.render_widget(input, area);
 }
 
 /// Renders the list of search results.
-fn render_results_list(frame: &mut Frame, app: &mut AppState, area: ratatui::layout::Rect) {
+fn render_results_list(frame: &mut Frame, app: &mut AppState, area: Rect) {
+    let icon_visible = app.config.results.icon_visible;
+    let item_display = app.config.results.item_display.clone();
+
     let items: Vec<ListItem> = app
         .filtered_items
         .iter()
         .map(|i| {
-            let content = match (&i.icon, &i.description) {
-                (Some(icon), Some(desc)) => format!("{} {} - {}", icon, i.title, desc),
-                (Some(icon), None) => format!("{} {}", icon, i.title),
-                (None, Some(desc)) => format!("{} - {}", i.title, desc),
-                (None, None) => i.title.clone(),
+            let content = match &item_display {
+                ItemDisplay::Name => i.title.clone(),
+                ItemDisplay::NameDesc => match &i.description {
+                    Some(desc) => format!("{} - {}", i.title, desc),
+                    None => i.title.clone(),
+                },
+                ItemDisplay::IconName => match &i.icon {
+                    Some(icon) if icon_visible => format!("{} {}", icon, i.title),
+                    _ => i.title.clone(),
+                },
+                ItemDisplay::IconNameDesc => match (&i.icon, &i.description) {
+                    (Some(icon), Some(desc)) if icon_visible => format!("{} {} - {}", icon, i.title, desc),
+                    (Some(icon), None) if icon_visible => format!("{} {}", icon, i.title),
+                    (_, Some(desc)) => format!("{} - {}", i.title, desc),
+                    (_, None) => i.title.clone(),
+                },
             };
-            ListItem::new(content)
+            
+            ListItem::new(content).style(style_resolver::resolve_style(&app.config.results.style))
         })
         .collect();
 
+    let config = &app.config.results;
     let results_count = app.filtered_items.len();
-    let title = format!("Results ({})", results_count);
+    let title = config.title.replace("{count}", &results_count.to_string());
+
+    let block = style_resolver::resolve_block(&title, &config.border, &config.style);
+
+    let active_bg = config.selected.background.as_deref().unwrap_or_default();
+    let active_fg = config.selected.foreground.as_deref().unwrap_or_default();
 
     let list = List::new(items)
-        .block(Block::default().borders(Borders::ALL).title(title))
+        .block(block)
         .highlight_style(
             Style::default()
-                .bg(Color::DarkGray)
-                .add_modifier(Modifier::BOLD),
+                .bg(style_resolver::parse_color(active_bg))
+                .fg(style_resolver::parse_color(active_fg))
+                .add_modifier(style_resolver::resolve_modifier(&config.selected.modifier)),
         )
-        .highlight_symbol(">> ");
+        .highlight_symbol(if config.selected.symbol_visible {
+            &config.selected.symbol
+        } else {
+            ""
+        });
 
     frame.render_stateful_widget(list, area, &mut app.list_state);
+
+    let show_scrollbar = config.show_scrollbar;
+    let track_symbol = config.scrollbar.track_symbol.clone();
+    let thumb_symbol = config.scrollbar.thumb_symbol.clone();
+
+    // Render scrollbar if enabled
+    if show_scrollbar && results_count > 0 {
+        let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+            .begin_symbol(None)
+            .end_symbol(None)
+            .track_symbol(Some(&track_symbol))
+            .thumb_symbol(&thumb_symbol);
+
+        let mut scrollbar_state = ScrollbarState::new(results_count.saturating_sub(1))
+            .position(app.list_state.selected().unwrap_or(0));
+
+        frame.render_stateful_widget(
+            scrollbar,
+            area.inner(ratatui::layout::Margin { vertical: 1, horizontal: 0 }),
+            &mut scrollbar_state,
+        );
+    }
 }
 
 fn render_apps_results_list_with_inline_icons(frame: &mut Frame, app: &mut AppState, area: Rect) {
     let results_count = app.filtered_items.len();
-    let title = format!("Results ({})", results_count);
-    let block = Block::default().borders(Borders::ALL).title(title);
+    let config_results = &app.config.results;
+    let title = config_results.title.replace("{count}", &results_count.to_string());
+    
+    let block = style_resolver::resolve_block(&title, &config_results.border, &config_results.style);
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
@@ -150,11 +253,32 @@ fn render_apps_results_list_with_inline_icons(frame: &mut Frame, app: &mut AppSt
     }
     *app.list_state.offset_mut() = offset;
 
-    let highlight_style = Style::default()
-        .bg(Color::DarkGray)
-        .add_modifier(Modifier::BOLD);
-    let normal_style = Style::default().fg(Color::White);
-    let prefix_width: u16 = 3; // `>> `
+    // Cache config values to avoid multiple borrows
+    let (highlight_style, normal_style, symbol, symbol_visible, item_display, fallback_icon) = {
+        let config = &app.config.results;
+        let active_bg = config.selected.background.as_deref().unwrap_or_default();
+        let active_fg = config.selected.foreground.as_deref().unwrap_or_default();
+        
+        let highlight = Style::default()
+            .bg(style_resolver::parse_color(active_bg))
+            .fg(style_resolver::parse_color(active_fg))
+            .add_modifier(style_resolver::resolve_modifier(&config.selected.modifier));
+        
+        (
+            highlight,
+            style_resolver::resolve_style(&config.style),
+            config.selected.symbol.clone(),
+            config.selected.symbol_visible,
+            config.item_display.clone(),
+            app.config.modes.apps.icons.fallback.clone(),
+        )
+    };
+        
+    let prefix_width: u16 = if symbol_visible {
+        symbol.chars().count() as u16
+    } else {
+        0
+    };
     let icon_width: u16 = 4;
 
     for row in 0..inner.height {
@@ -199,19 +323,26 @@ fn render_apps_results_list_with_inline_icons(frame: &mut Frame, app: &mut AppSt
         {
             let buf = frame.buffer_mut();
             buf.set_style(row_rect, style);
-            let prefix = if is_selected { ">> " } else { "   " };
-            buf.set_stringn(
-                prefix_rect.x,
-                prefix_rect.y,
-                prefix,
-                prefix_rect.width as usize,
-                style,
-            );
+            
+            if symbol_visible {
+                let padding = " ".repeat(symbol.chars().count());
+                let prefix = if is_selected { symbol.as_str() } else { padding.as_str() };
+                buf.set_stringn(
+                    prefix_rect.x,
+                    prefix_rect.y,
+                    prefix,
+                    prefix_rect.width as usize,
+                    style,
+                );
+            }
 
             if text_rect.width > 0 {
-                let text = match &item.description {
-                    Some(desc) => format!("{} - {}", item.title, desc),
-                    None => item.title.clone(),
+                let text = match item_display {
+                    ItemDisplay::Name => item.title.clone(),
+                    _ => match &item.description {
+                        Some(desc) => format!("{} - {}", item.title, desc),
+                        None => item.title.clone(),
+                    },
                 };
                 buf.set_stringn(
                     text_rect.x,
@@ -225,16 +356,38 @@ fn render_apps_results_list_with_inline_icons(frame: &mut Frame, app: &mut AppSt
 
         let rendered_image = render_inline_icon_image(frame, app, icon_rect, &item);
         if !rendered_image && icon_rect.width > 0 {
-            let fallback = "⚙️";
             let buf = frame.buffer_mut();
             buf.set_stringn(
                 icon_rect.x,
                 icon_rect.y,
-                fallback,
+                &fallback_icon,
                 icon_rect.width as usize,
                 style,
             );
         }
+    }
+
+    // Render scrollbar
+    let (show_scrollbar, track_symbol, thumb_symbol) = {
+        let s = &app.config.results;
+        (s.show_scrollbar, s.scrollbar.track_symbol.clone(), s.scrollbar.thumb_symbol.clone())
+    };
+
+    if show_scrollbar && item_count > 0 {
+        let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+            .begin_symbol(None)
+            .end_symbol(None)
+            .track_symbol(Some(&track_symbol))
+            .thumb_symbol(&thumb_symbol);
+
+        let mut scrollbar_state = ScrollbarState::new(item_count.saturating_sub(1))
+            .position(selected);
+
+        frame.render_stateful_widget(
+            scrollbar,
+            area.inner(ratatui::layout::Margin { vertical: 1, horizontal: 0 }),
+            &mut scrollbar_state,
+        );
     }
 }
 

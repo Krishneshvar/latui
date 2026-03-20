@@ -3,7 +3,7 @@ use latui::config::keywords::KeywordMapper;
 use latui::config::loader::load_user_config_path;
 use latui::config::settings::load_user_settings;
 use latui::modes::{
-    apps::AppsMode, clipboard::ClipboardMode, emojis::EmojisMode, files::FilesMode, run::RunMode,
+    apps::AppsMode, clipboard::ClipboardMode, custom::CustomMode, emojis::EmojisMode, files::FilesMode, run::RunMode,
 };
 use latui::tracking::frequency::FrequencyTracker;
 use std::fs;
@@ -141,6 +141,14 @@ fn run_app() -> anyhow::Result<()> {
         .register("clipboard", Box::new(ClipboardMode::new()));
     app.mode_registry
         .register("emojis", Box::new(EmojisMode::new()));
+
+    // Register custom modes from configuration
+    for (id, custom_config) in app.config.modes.custom.clone() {
+        app.mode_registry.register(
+            &id,
+            Box::new(CustomMode::new(id.clone(), custom_config)),
+        );
+    }
 
     // Load all registered modes
     info!("Initializing modes...");

@@ -9,6 +9,19 @@ use crate::ui::bundled_themes;
 pub struct ModesSettings {
     #[serde(default)]
     pub apps: AppsModeSettings,
+    #[serde(default)]
+    pub custom: std::collections::HashMap<String, CustomModeConfig>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct CustomModeConfig {
+    pub name: String,
+    pub icon: String,
+    pub description: String,
+    pub list_cmd: String,
+    pub exec_cmd: String,
+    #[serde(default)]
+    pub stays_open: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

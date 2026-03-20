@@ -63,15 +63,21 @@ pub fn save_cache(items: &[SearchableItem], cache_key: &str) -> Result<(), Cache
         cache_key: cache_key.to_string(),
         apps: items.to_vec(),
     };
-    let json = serde_json::to_string(&cache)?;
     let path = cache_path()?;
-    fs::write(&path, json)?;
+    let mut tmp_path = path.clone();
+    tmp_path.set_extension("tmp");
+
+    let file = fs::File::create(&tmp_path)?;
+    let writer = std::io::BufWriter::new(file);
 
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let _ = fs::set_permissions(&path, fs::Permissions::from_mode(0o600));
+        let _ = fs::set_permissions(&tmp_path, fs::Permissions::from_mode(0o600));
     }
+
+    serde_json::to_writer(writer, &cache)?;
+    fs::rename(&tmp_path, &path)?;
 
     debug!("Successfully flushed application state cache to {:?}", path);
     Ok(())

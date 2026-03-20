@@ -143,14 +143,12 @@ impl RunMode {
 
         let entries: Vec<HistoryEntry> = self.history.iter().cloned().collect();
 
-        let json = serde_json::to_string_pretty(&entries)
-            .map_err(|e| LatuiError::Io(std::io::Error::other(e)))?;
-
         // Write to temporary file for atomicity
         let mut tmp_path = history_path.clone();
         tmp_path.set_extension("tmp");
 
-        std::fs::write(&tmp_path, json)?;
+        let file = std::fs::File::create(&tmp_path)?;
+        let writer = std::io::BufWriter::new(file);
 
         // Set secure permissions on tmp file before moving
         #[cfg(unix)]
@@ -159,6 +157,8 @@ impl RunMode {
             let _ = std::fs::set_permissions(&tmp_path, std::fs::Permissions::from_mode(0o600));
         }
 
+        serde_json::to_writer_pretty(writer, &entries)
+            .map_err(|e| LatuiError::Io(std::io::Error::other(e)))?;
         std::fs::rename(&tmp_path, history_path)?;
 
         self.dirty = false;

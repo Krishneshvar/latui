@@ -1,4 +1,4 @@
-#![warn(clippy::pedantic, clippy::nursery)]
+#![warn(clippy::pedantic, clippy::nursery, missing_debug_implementations)]
 #![allow(clippy::module_name_repetitions, clippy::must_use_candidate, clippy::similar_names, clippy::missing_errors_doc, clippy::too_many_lines, clippy::cast_possible_truncation, clippy::doc_markdown, clippy::cast_possible_wrap, clippy::cast_sign_loss, clippy::cast_lossless)]
 
 //! LaTUI — A premium, high-performance, and modular TUI launcher.

@@ -217,13 +217,12 @@ impl ClipboardMode {
         };
 
         let entries: Vec<ClipEntry> = self.history.iter().cloned().collect();
-        let json = serde_json::to_string_pretty(&entries)
-            .map_err(|e| LatuiError::Io(std::io::Error::other(e)))?;
-
         // Atomic write via temp file
         let mut tmp_path = path.clone();
         tmp_path.set_extension("tmp");
-        std::fs::write(&tmp_path, json)?;
+
+        let file = std::fs::File::create(&tmp_path)?;
+        let writer = std::io::BufWriter::new(file);
 
         #[cfg(unix)]
         {
@@ -231,6 +230,8 @@ impl ClipboardMode {
             let _ = std::fs::set_permissions(&tmp_path, std::fs::Permissions::from_mode(0o600));
         }
 
+        serde_json::to_writer_pretty(writer, &entries)
+            .map_err(|e| LatuiError::Io(std::io::Error::other(e)))?;
         std::fs::rename(&tmp_path, &path)?;
 
         self.dirty = false;

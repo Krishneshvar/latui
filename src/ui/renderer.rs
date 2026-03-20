@@ -2,16 +2,17 @@ use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::Style,
-    widgets::{Block, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Tabs},
+    widgets::{Block, List, ListItem, Paragraph, Tabs},
 };
 use ratatui_image::StatefulImage;
 
 use crate::app::state::AppState;
 use crate::config::theme::{ItemDisplay, NavbarPosition};
+use crate::core::icons;
 use crate::core::item::Item;
+use crate::ui::components::scrollbar::render_scrollbar;
 use crate::ui::style_resolver;
-use freedesktop_desktop_entry::DesktopEntry;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 /// Main rendering function for the TUI.
 /// Draws the mode tabs, search input, and results list.
@@ -79,8 +80,7 @@ pub fn draw(frame: &mut Frame, app: &mut AppState) {
         let is_apps_mode = app
             .mode_registry
             .get_active_mode()
-            .map(|mode| mode.name() == "apps")
-            .unwrap_or(false);
+            .is_some_and(|mode| mode.name() == "apps");
 
         if is_apps_mode && app.image_support.is_some() {
             render_apps_results_list_with_inline_icons(frame, app, results_area);
@@ -118,11 +118,10 @@ fn render_mode_tabs(frame: &mut Frame, app: &AppState, area: Rect) {
 /// Renders the search input box with the current query.
 fn render_search_input(frame: &mut Frame, app: &AppState, area: Rect) {
     let config = &app.config.search;
-    let mode_name = if let Some(mode) = app.mode_registry.get_active_mode() {
-        format!("{} {}", mode.icon(), mode.description())
-    } else {
-        "Search".to_string()
-    };
+    let mode_name = app.mode_registry.get_active_mode().map_or_else(
+        || "Search".to_string(),
+        |mode| format!("{} {}", mode.icon(), mode.description()),
+    );
 
     let prompt = &config.prompt_symbol;
     let input_text = format!("{}{}", prompt, app.query);
@@ -152,10 +151,10 @@ fn render_results_list(frame: &mut Frame, app: &mut AppState, area: Rect) {
         .map(|i| {
             let content = match &item_display {
                 ItemDisplay::Name => i.title.clone(),
-                ItemDisplay::NameDesc => match &i.description {
-                    Some(desc) => format!("{} - {}", i.title, desc),
-                    None => i.title.clone(),
-                },
+                ItemDisplay::NameDesc => i
+                    .description
+                    .as_ref()
+                    .map_or_else(|| i.title.clone(), |desc| format!("{} - {}", i.title, desc)),
                 ItemDisplay::IconName => match &i.icon {
                     Some(icon) if icon_visible => format!("{} {}", icon, i.title),
                     _ => i.title.clone(),
@@ -178,15 +177,15 @@ fn render_results_list(frame: &mut Frame, app: &mut AppState, area: Rect) {
 
     let block = style_resolver::resolve_block(&title, &config.border, &config.style);
 
-    let active_bg = config.selected.background.as_deref().unwrap_or_default();
-    let active_fg = config.selected.foreground.as_deref().unwrap_or_default();
+    let bg = config.selected.background.as_deref().unwrap_or_default();
+    let fg = config.selected.foreground.as_deref().unwrap_or_default();
 
     let list = List::new(items)
         .block(block)
         .highlight_style(
             Style::default()
-                .bg(style_resolver::parse_color(active_bg))
-                .fg(style_resolver::parse_color(active_fg))
+                .bg(style_resolver::parse_color(bg))
+                .fg(style_resolver::parse_color(fg))
                 .add_modifier(style_resolver::resolve_modifier(&config.selected.modifier)),
         )
         .highlight_symbol(if config.selected.symbol_visible {
@@ -197,27 +196,8 @@ fn render_results_list(frame: &mut Frame, app: &mut AppState, area: Rect) {
 
     frame.render_stateful_widget(list, area, &mut app.list_state);
 
-    let show_scrollbar = config.show_scrollbar;
-    let track_symbol = config.scrollbar.track_symbol.clone();
-    let thumb_symbol = config.scrollbar.thumb_symbol.clone();
-
-    // Render scrollbar if enabled
-    if show_scrollbar && results_count > 0 {
-        let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
-            .begin_symbol(None)
-            .end_symbol(None)
-            .track_symbol(Some(&track_symbol))
-            .thumb_symbol(&thumb_symbol);
-
-        let mut scrollbar_state = ScrollbarState::new(results_count.saturating_sub(1))
-            .position(app.list_state.selected().unwrap_or(0));
-
-        frame.render_stateful_widget(
-            scrollbar,
-            area.inner(ratatui::layout::Margin { vertical: 1, horizontal: 0 }),
-            &mut scrollbar_state,
-        );
-    }
+    let selected = app.list_state.selected().unwrap_or(0);
+    render_scrollbar(frame, app, area, selected, results_count);
 }
 
 fn render_apps_results_list_with_inline_icons(frame: &mut Frame, app: &mut AppState, area: Rect) {
@@ -246,6 +226,10 @@ fn render_apps_results_list_with_inline_icons(frame: &mut Frame, app: &mut AppSt
         .min(item_count.saturating_sub(1));
     app.list_state.select(Some(selected));
 
+    // Manual scroll offset management:
+    // Since we are not using ratatui's List widget for this specialized rendering
+    // (needed for inline local image rendering), we must manually handle the viewport offset.
+    // ListState manages the selection but we must synchronize its internal offset.
     let viewport_rows = inner.height as usize;
     let mut offset = app.list_state.offset().min(item_count.saturating_sub(1));
     if selected < offset {
@@ -262,12 +246,12 @@ fn render_apps_results_list_with_inline_icons(frame: &mut Frame, app: &mut AppSt
     // Cache config values to avoid multiple borrows
     let (highlight_style, normal_style, symbol, symbol_visible, item_display, icon_visible, fallback_icon) = {
         let config = &app.config.results;
-        let active_bg = config.selected.background.as_deref().unwrap_or_default();
-        let active_fg = config.selected.foreground.as_deref().unwrap_or_default();
+        let bg = config.selected.background.as_deref().unwrap_or_default();
+        let fg = config.selected.foreground.as_deref().unwrap_or_default();
         
         let highlight = Style::default()
-            .bg(style_resolver::parse_color(active_bg))
-            .fg(style_resolver::parse_color(active_fg))
+            .bg(style_resolver::parse_color(bg))
+            .fg(style_resolver::parse_color(fg))
             .add_modifier(style_resolver::resolve_modifier(&config.selected.modifier));
         
         (
@@ -380,27 +364,7 @@ fn render_apps_results_list_with_inline_icons(frame: &mut Frame, app: &mut AppSt
     }
 
     // Render scrollbar
-    let (show_scrollbar, track_symbol, thumb_symbol) = {
-        let s = &app.config.results;
-        (s.show_scrollbar, s.scrollbar.track_symbol.clone(), s.scrollbar.thumb_symbol.clone())
-    };
-
-    if show_scrollbar && item_count > 0 {
-        let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
-            .begin_symbol(None)
-            .end_symbol(None)
-            .track_symbol(Some(&track_symbol))
-            .thumb_symbol(&thumb_symbol);
-
-        let mut scrollbar_state = ScrollbarState::new(item_count.saturating_sub(1))
-            .position(selected);
-
-        frame.render_stateful_widget(
-            scrollbar,
-            area.inner(ratatui::layout::Margin { vertical: 1, horizontal: 0 }),
-            &mut scrollbar_state,
-        );
-    }
+    render_scrollbar(frame, app, area, selected, item_count);
 }
 
 fn render_inline_icon_image(
@@ -419,36 +383,36 @@ fn render_inline_icon_image(
 
     let cache_key = icon_path.to_string_lossy().to_string();
 
-    if !app.icon_preview_protocols.contains_key(&cache_key)
-        && !app.failed_icon_paths.contains(&cache_key)
-    {
-        let picker = app
-            .image_support
-            .as_ref()
-            .map(|support| support.picker.clone());
-        if let Some(picker) = picker {
-            match image::ImageReader::open(&icon_path)
-                .ok()
-                .and_then(|r| r.with_guessed_format().ok())
-                .and_then(|r| r.decode().ok())
-            {
-                Some(decoded) => {
-                    app.icon_preview_protocols
-                        .insert(cache_key.clone(), picker.new_resize_protocol(decoded));
-                }
-                None => {
-                    app.failed_icon_paths.insert(cache_key.clone());
+        if !app.icon_preview_protocols.contains(&cache_key)
+            && !app.failed_icon_paths.contains(&cache_key)
+        {
+            let picker = app
+                .image_support
+                .as_ref()
+                .map(|support| support.picker.clone());
+            if let Some(picker) = picker {
+                match image::ImageReader::open(&icon_path)
+                    .ok()
+                    .and_then(|r| r.with_guessed_format().ok())
+                    .and_then(|r| r.decode().ok())
+                {
+                    Some(decoded) => {
+                        app.icon_preview_protocols
+                            .put(cache_key.clone(), picker.new_resize_protocol(decoded));
+                    }
+                    None => {
+                        app.failed_icon_paths.insert(cache_key.clone());
+                    }
                 }
             }
         }
-    }
 
-    if let Some(protocol) = app.icon_preview_protocols.get_mut(&cache_key) {
-        frame.render_stateful_widget(StatefulImage::default(), icon_rect, protocol);
-        true
-    } else {
-        false
-    }
+    app.icon_preview_protocols
+        .get_mut(&cache_key)
+        .is_some_and(|protocol| {
+            frame.render_stateful_widget(StatefulImage::default(), icon_rect, protocol);
+            true
+        })
 }
 
 fn resolve_desktop_icon_path(app: &mut AppState, item: &Item) -> Option<PathBuf> {
@@ -456,40 +420,9 @@ fn resolve_desktop_icon_path(app: &mut AppState, item: &Item) -> Option<PathBuf>
         return cached.clone();
     }
 
-    let desktop_path = PathBuf::from(&item.id);
-    let resolved = resolve_desktop_icon_path_impl(&desktop_path);
+    let desktop_path = std::path::Path::new(&item.id);
+    let resolved = icons::resolve_icon_from_entry(desktop_path);
     app.desktop_icon_path_cache
-        .insert(item.id.clone(), resolved.clone());
+        .put(item.id.clone(), resolved.clone());
     resolved
-}
-
-fn resolve_desktop_icon_path_impl(desktop_path: &Path) -> Option<PathBuf> {
-    if !desktop_path.exists() {
-        return None;
-    }
-
-    let entry = DesktopEntry::from_path(desktop_path, None::<&[&str]>).ok()?;
-    let icon_name = entry.icon()?.trim();
-    if icon_name.is_empty() {
-        return None;
-    }
-
-    let direct = Path::new(icon_name);
-    if direct.is_absolute() && direct.exists() {
-        return Some(direct.to_path_buf());
-    }
-
-    let theme = std::env::var("LATUI_ICON_THEME")
-        .ok()
-        .map(|v| v.trim().to_string())
-        .filter(|v| !v.is_empty())
-        .or_else(freedesktop_icons::default_theme_gtk)
-        .unwrap_or_else(|| "hicolor".to_string());
-
-    freedesktop_icons::lookup(icon_name)
-        .with_size(96)
-        .with_scale(1)
-        .with_theme(&theme)
-        .with_cache()
-        .find()
 }

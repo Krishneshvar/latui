@@ -11,13 +11,12 @@ pub fn parse_color(s: &str) -> Color {
             let g = u8::from_str_radix(&s[3..5], 16).unwrap_or(255);
             let b = u8::from_str_radix(&s[5..7], 16).unwrap_or(255);
             return Color::Rgb(r, g, b);
-        } else {
-            // #rgb shorthand
-            let r_v = u8::from_str_radix(&s[1..2], 16).unwrap_or(15);
-            let g_v = u8::from_str_radix(&s[2..3], 16).unwrap_or(15);
-            let b_v = u8::from_str_radix(&s[3..4], 16).unwrap_or(15);
-            return Color::Rgb(r_v * 17, g_v * 17, b_v * 17);
         }
+        // #rgb shorthand
+        let r_v = u8::from_str_radix(&s[1..2], 16).unwrap_or(15);
+        let g_v = u8::from_str_radix(&s[2..3], 16).unwrap_or(15);
+        let b_v = u8::from_str_radix(&s[3..4], 16).unwrap_or(15);
+        return Color::Rgb(r_v * 17, g_v * 17, b_v * 17);
     }
     
     // fallback to named colors
@@ -63,17 +62,16 @@ pub fn resolve_style(panel: &PanelStyle) -> Style {
     s
 }
 
-pub fn resolve_borders(border: &BorderConfig) -> Borders {
-    if !border.visible { Borders::NONE } else { Borders::ALL }
+pub const fn resolve_borders(border: &BorderConfig) -> Borders {
+    if border.visible { Borders::ALL } else { Borders::NONE }
 }
 
-pub fn resolve_border_type(border: &BorderConfig) -> BorderType {
+pub const fn resolve_border_type(border: &BorderConfig) -> BorderType {
     match border.style {
-        BorderStyle::Plain   => BorderType::Plain,
+        BorderStyle::Plain | BorderStyle::None => BorderType::Plain,
         BorderStyle::Rounded => BorderType::Rounded,
         BorderStyle::Double  => BorderType::Double,
         BorderStyle::Thick   => BorderType::Thick,
-        BorderStyle::None    => BorderType::Plain,
     }
 }
 

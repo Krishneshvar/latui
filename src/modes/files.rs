@@ -18,13 +18,14 @@
 //! - All paths are canonicalised and validated to prevent path-traversal.
 
 use crate::core::{item::Item, mode::Mode, searchable_item::SearchableItem};
+use crate::core::utils::current_timestamp;
 use crate::error::LatuiError;
 use crate::search::engine::SearchEngine;
 
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+
 use std::time::Instant;
 use walkdir::WalkDir;
 
@@ -62,19 +63,19 @@ pub enum FileKind {
 impl FileKind {
     fn from_path(path: &Path) -> Self {
         if path.is_symlink() {
-            FileKind::Symlink
+            Self::Symlink
         } else if path.is_dir() {
-            FileKind::Dir
+            Self::Dir
         } else {
-            FileKind::File
+            Self::File
         }
     }
 
-    fn icon(&self) -> &'static str {
+    const fn icon(&self) -> &'static str {
         match self {
-            FileKind::File => "📄",
-            FileKind::Dir => "📁",
-            FileKind::Symlink => "🔗",
+            Self::File => "📄",
+            Self::Dir => "📁",
+            Self::Symlink => "🔗",
         }
     }
 }
@@ -100,6 +101,7 @@ struct RecentEntry {
 // ─── FilesMode ────────────────────────────────────────────────────────────────
 
 /// Files mode — fuzzy-searchable filesystem navigator.
+#[derive(Debug)]
 pub struct FilesMode {
     /// Recent files/dirs opened through LaTUI (most recent first).
     recents: VecDeque<RecentEntry>,
@@ -129,12 +131,13 @@ impl FilesMode {
 
     /// Create a new `FilesMode` that searches `$HOME`.
     pub fn new() -> Self {
-        let home = home_dir();
+        let home = std::env::var("HOME")
+            .map_or_else(|_| PathBuf::from("/"), PathBuf::from);
         Self::with_roots(vec![home])
     }
 
     /// Create a `FilesMode` with custom search roots.
-    pub fn with_roots(roots: Vec<PathBuf>) -> Self {
+    pub const fn with_roots(roots: Vec<PathBuf>) -> Self {
         Self {
             recents: VecDeque::new(),
             searchable_recents: Vec::new(),
@@ -214,13 +217,12 @@ impl FilesMode {
         };
 
         let entries: Vec<RecentEntry> = self.recents.iter().cloned().collect();
-        let json = serde_json::to_string_pretty(&entries)
-            .map_err(|e| LatuiError::Io(std::io::Error::other(e)))?;
-
         // Atomic write via temp file
         let mut tmp_path = path.clone();
         tmp_path.set_extension("tmp");
-        std::fs::write(&tmp_path, json)?;
+
+        let file = std::fs::File::create(&tmp_path)?;
+        let writer = std::io::BufWriter::new(file);
 
         #[cfg(unix)]
         {
@@ -228,6 +230,8 @@ impl FilesMode {
             let _ = std::fs::set_permissions(&tmp_path, std::fs::Permissions::from_mode(0o600));
         }
 
+        serde_json::to_writer_pretty(writer, &entries)
+            .map_err(|e| LatuiError::Io(std::io::Error::other(e)))?;
         std::fs::rename(&tmp_path, &path)?;
 
         self.dirty = false;
@@ -273,8 +277,7 @@ impl FilesMode {
                 let kind = FileKind::from_path(path);
                 let file_name = path
                     .file_name()
-                    .map(|n| n.to_string_lossy().to_string())
-                    .unwrap_or_else(|| entry.path.clone());
+                    .map_or_else(|| entry.path.clone(), |n| n.to_string_lossy().to_string());
                 let parent = path
                     .parent()
                     .map(|p| p.to_string_lossy().to_string())
@@ -322,8 +325,7 @@ impl FilesMode {
                 let kind = FileKind::from_path(path);
                 let file_name = path
                     .file_name()
-                    .map(|n| n.to_string_lossy().to_string())
-                    .unwrap_or_else(|| entry.path.clone());
+                    .map_or_else(|| entry.path.clone(), |n| n.to_string_lossy().to_string());
                 let parent = path
                     .parent()
                     .map(|p| p.to_string_lossy().to_string())
@@ -345,9 +347,10 @@ impl FilesMode {
                 };
 
                 // Score: recency weight + frequency bonus
-                let recency_score = (total - idx) as f64 * 10.0;
-                let frequency_score = (entry.open_count as f64).ln() * 15.0;
-                Some((item, recency_score + frequency_score))
+                #[allow(clippy::cast_precision_loss)]
+                let score =
+                    ((total - idx) as f64).mul_add(10.0, (entry.open_count as f64).ln_1p() * 15.0);
+                Some((item, score))
             })
             .collect();
 
@@ -369,16 +372,13 @@ impl FilesMode {
         let mut results: Vec<(Item, f64)> = Vec::new();
 
         for root in &self.search_roots {
-            let canonical_root = match root.canonicalize() {
-                Ok(p) => p,
-                Err(_) => root.clone(),
-            };
+            let canonical_root = root.canonicalize().unwrap_or_else(|_| root.clone());
 
             for entry in WalkDir::new(root)
                 .max_depth(SEARCH_MAX_DEPTH)
                 .follow_links(false)
                 .into_iter()
-                .filter_map(|e| e.ok())
+                .filter_map(std::result::Result::ok)
                 // Skip hidden directories (names starting with '.'), except
                 // the root itself.
                 .filter(|e| e.depth() == 0 || !e.file_name().to_string_lossy().starts_with('.'))
@@ -463,7 +463,7 @@ impl FilesMode {
 
         let pb = PathBuf::from(path);
         if !pb.exists() {
-            return Err(LatuiError::App(format!("Path does not exist: {}", path)));
+            return Err(LatuiError::App(format!("Path does not exist: {path}")));
         }
 
         Ok(pb)
@@ -505,15 +505,15 @@ impl FilesMode {
 // ─── Mode trait implementation ────────────────────────────────────────────────
 
 impl Mode for FilesMode {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "files"
     }
 
-    fn icon(&self) -> &str {
+    fn icon(&self) -> &'static str {
         "📁"
     }
 
-    fn description(&self) -> &str {
+    fn description(&self) -> &'static str {
         "Filesystem Search"
     }
 
@@ -621,7 +621,7 @@ impl Mode for FilesMode {
             .ok_or_else(|| LatuiError::App("Missing file metadata".to_string()))?;
 
         let meta: FileMetadata = serde_json::from_str(meta_json)
-            .map_err(|e| LatuiError::App(format!("Corrupt file metadata: {}", e)))?;
+            .map_err(|e| LatuiError::App(format!("Corrupt file metadata: {e}")))?;
 
         // Validate path (existence, length, null-bytes).
         let path = Self::validate_path(&meta.path)?;
@@ -629,25 +629,17 @@ impl Mode for FilesMode {
         tracing::info!("Opening file/dir: {}", path.display());
 
         // Open using the system default handler.
-        let result = Command::new("xdg-open").arg(&path).spawn();
+        crate::core::execution::ExecutionEngine::spawn_shell(&format!("xdg-open \"{}\"", meta.path), &[])?;
 
-        match result {
-            Ok(_) => {
-                // Record in recents.
-                self.add_to_recents(&meta.path);
+        // Record in recents.
+        self.add_to_recents(&meta.path);
 
-                // Persist immediately.
-                if let Err(e) = self.save_recents() {
-                    tracing::error!("Failed to save recents after open: {}", e);
-                }
-
-                Ok(())
-            }
-            Err(e) => {
-                tracing::error!("Failed to open '{}' with xdg-open: {}", path.display(), e);
-                Err(LatuiError::Io(e))
-            }
+        // Persist immediately.
+        if let Err(e) = self.save_recents() {
+            tracing::error!("Failed to save recents after open: {}", e);
         }
+
+        Ok(())
     }
 
     // ── record_selection ─────────────────────────────────────────────────
@@ -691,7 +683,7 @@ impl Mode for FilesMode {
             FileKind::File => Self::text_preview(path).or_else(|| {
                 // For binary files just show basic stats.
                 let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
-                Some(format!("Binary file — {} bytes", size))
+                Some(format!("Binary file — {size} bytes"))
             }),
 
             FileKind::Dir => {
@@ -708,9 +700,8 @@ impl Mode for FilesMode {
 
             FileKind::Symlink => {
                 let target = std::fs::read_link(path)
-                    .map(|t| t.to_string_lossy().to_string())
-                    .unwrap_or_else(|_| "<unreadable>".to_string());
-                Some(format!("🔗  Symlink → {}", target))
+                    .map_or_else(|_| "<unreadable>".to_string(), |t| t.to_string_lossy().to_string());
+                Some(format!("🔗  Symlink → {target}"))
             }
         }
     }
@@ -726,23 +717,6 @@ impl Drop for FilesMode {
             tracing::error!("Failed to save recents on drop: {}", e);
         }
     }
-}
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-/// Return the current Unix timestamp in seconds.
-fn current_timestamp() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
-}
-
-/// Resolve the user's home directory (with a safe fallback).
-fn home_dir() -> PathBuf {
-    std::env::var("HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from("/"))
 }
 
 impl Default for FilesMode {

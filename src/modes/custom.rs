@@ -9,7 +9,7 @@ use serde::Deserialize;
 use std::process::Command;
 use std::time::Instant;
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 struct CustomItemDef {
     id: Option<String>,
     title: String,
@@ -18,6 +18,7 @@ struct CustomItemDef {
     metadata: Option<String>,
 }
 
+#[derive(Debug)]
 pub struct CustomMode {
     pub id: String,
     pub config: CustomModeConfig,
@@ -27,7 +28,7 @@ pub struct CustomMode {
 }
 
 impl CustomMode {
-    pub fn new(id: String, config: CustomModeConfig) -> Self {
+    pub const fn new(id: String, config: CustomModeConfig) -> Self {
         Self {
             id,
             config,
@@ -55,8 +56,8 @@ impl CustomMode {
 
         if !output.status.success() {
             let err_msg = String::from_utf8_lossy(&output.stderr);
-            tracing::error!("Custom mode list_cmd failed: {}", err_msg);
-            return Err(LatuiError::App(format!("Script failed: {}", err_msg)));
+            tracing::error!("Custom mode list_cmd failed: {err_msg}");
+            return Err(LatuiError::App(format!("Script failed: {err_msg}")));
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
@@ -180,30 +181,20 @@ impl Mode for CustomMode {
 
         tracing::info!("Executing custom action for mode '{}': {}", self.id, item.title);
 
-        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
-        
-        // Spawn the execution command, providing item details as env vars
-        let mut cmd = Command::new(&shell);
-        cmd.arg("-c").arg(&self.config.exec_cmd);
-        
-        cmd.env("LATUI_ITEM_ID", &item.id);
-        cmd.env("LATUI_ITEM_TITLE", &item.title);
+        let mut env_vars = vec![
+            ("LATUI_ITEM_ID", item.id.as_str()),
+            ("LATUI_ITEM_TITLE", item.title.as_str()),
+        ];
         
         if let Some(desc) = &item.description {
-            cmd.env("LATUI_ITEM_DESC", desc);
+            env_vars.push(("LATUI_ITEM_DESC", desc.as_str()));
         }
         
         if let Some(meta) = &item.metadata {
-            cmd.env("LATUI_ITEM_METADATA", meta);
+            env_vars.push(("LATUI_ITEM_METADATA", meta.as_str()));
         }
 
-        match cmd.spawn() {
-            Ok(_) => Ok(()),
-            Err(e) => {
-                tracing::error!("Failed to execute action for mode '{}': {}", self.id, e);
-                Err(LatuiError::Io(e))
-            }
-        }
+        crate::core::execution::ExecutionEngine::spawn_shell(&self.config.exec_cmd, &env_vars)
     }
 
     fn record_selection(&mut self, _query: &str, _item: &Item) {

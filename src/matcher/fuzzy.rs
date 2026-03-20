@@ -7,6 +7,12 @@ pub struct FuzzyMatcher {
     matcher: Matcher,
 }
 
+impl std::fmt::Debug for FuzzyMatcher {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FuzzyMatcher").finish_non_exhaustive()
+    }
+}
+
 impl Default for FuzzyMatcher {
     fn default() -> Self {
         Self::new()

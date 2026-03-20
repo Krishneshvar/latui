@@ -1884,7 +1884,7 @@ static EMOJIS: &[EmojiRow] = &[
 
 // ── Recent entry ───────────────────────────────────────────────────────────
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct RecentEmoji {
     glyph: String,
     use_count: u32,
@@ -1906,15 +1906,15 @@ impl CopyBackend {
             .map(|v| !v.is_empty())
             .unwrap_or(false);
         if wayland && cmd_exists("wl-copy") {
-            return CopyBackend::Wayland;
+            return Self::Wayland;
         }
         let display = std::env::var("DISPLAY")
             .map(|v| !v.is_empty())
             .unwrap_or(false);
         if display && cmd_exists("xclip") {
-            return CopyBackend::X11;
+            return Self::X11;
         }
-        CopyBackend::None
+        Self::None
     }
 }
 
@@ -1928,6 +1928,7 @@ fn cmd_exists(name: &str) -> bool {
 
 // ── EmojisMode ─────────────────────────────────────────────────────────────
 
+#[derive(Debug)]
 pub struct EmojisMode {
     /// Searchable index over the static database.
     searchable: Vec<SearchableItem>,
@@ -2002,12 +2003,11 @@ impl EmojisMode {
             None => return Ok(()),
         };
         let entries: Vec<RecentEmoji> = self.recents.iter().cloned().collect();
-        let json = serde_json::to_string_pretty(&entries)
-            .map_err(|e| LatuiError::Io(std::io::Error::other(e)))?;
-
         let mut tmp_path = path.clone();
         tmp_path.set_extension("tmp");
-        std::fs::write(&tmp_path, json)?;
+
+        let file = std::fs::File::create(&tmp_path)?;
+        let writer = std::io::BufWriter::new(file);
 
         #[cfg(unix)]
         {
@@ -2015,6 +2015,8 @@ impl EmojisMode {
             let _ = std::fs::set_permissions(&tmp_path, std::fs::Permissions::from_mode(0o600));
         }
 
+        serde_json::to_writer_pretty(writer, &entries)
+            .map_err(|e| LatuiError::Io(std::io::Error::other(e)))?;
         std::fs::rename(&tmp_path, &path)?;
         self.dirty = false;
         Ok(())
@@ -2048,14 +2050,14 @@ impl EmojisMode {
         self.searchable = EMOJIS
             .iter()
             .map(|(glyph, name, keywords, category)| {
-                let title = format!("{} {}", glyph, name);
+                let title = format!("{glyph} {name}");
                 let all_keywords = keywords.join(" ");
 
                 let item = Item {
-                    id: format!("emoji:{}", glyph),
+                    id: format!("emoji:{glyph}"),
                     title,
                     search_text: name.to_lowercase(),
-                    description: Some(format!("{} · {}", category, all_keywords)),
+                    description: Some(format!("{category} · {all_keywords}")),
                     icon: None,
                     metadata: Some(glyph.to_string()),
                 };
@@ -2091,15 +2093,16 @@ impl EmojisMode {
                 let (glyph, name, keywords, category) = row;
                 let all_kw = keywords.join(" ");
                 let item = Item {
-                    id: format!("emoji:{}", glyph),
-                    title: format!("{} {}", glyph, name),
+                    id: format!("emoji:{glyph}"),
+                    title: format!("{glyph} {name}"),
                     search_text: name.to_lowercase(),
-                    description: Some(format!("{} · {}", category, all_kw)),
+                    description: Some(format!("{category} · {all_kw}")),
                     icon: None,
                     metadata: Some(glyph.to_string()),
                 };
+                #[allow(clippy::cast_precision_loss)]
                 let score =
-                    (limit - idx) as f64 * 10.0 + (entry.use_count as f64 + 1.0).ln() * 15.0;
+                    ((limit - idx) as f64).mul_add(10.0, (entry.use_count as f64).ln_1p() * 15.0);
                 Some((item, score))
             })
             .collect();
@@ -2110,10 +2113,10 @@ impl EmojisMode {
                 .iter()
                 .take(RECENT_DISPLAY_LIMIT)
                 .map(|(glyph, name, keywords, category)| Item {
-                    id: format!("emoji:{}", glyph),
-                    title: format!("{} {}", glyph, name),
+                    id: format!("emoji:{glyph}"),
+                    title: format!("{glyph} {name}"),
                     search_text: name.to_lowercase(),
-                    description: Some(format!("{} · {}", keywords.join(" "), category)),
+                    description: Some(format!("{} · {category}", keywords.join(" "))),
                     icon: None,
                     metadata: Some(glyph.to_string()),
                 })
@@ -2171,13 +2174,13 @@ impl Default for EmojisMode {
 // ── Mode impl ──────────────────────────────────────────────────────────────
 
 impl Mode for EmojisMode {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "emojis"
     }
-    fn icon(&self) -> &str {
+    fn icon(&self) -> &'static str {
         "😀"
     }
-    fn description(&self) -> &str {
+    fn description(&self) -> &'static str {
         "Emoji Picker"
     }
 

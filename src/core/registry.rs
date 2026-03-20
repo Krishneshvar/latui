@@ -15,6 +15,17 @@ pub struct ModeRegistry {
     mode_order: Vec<String>,
 }
 
+impl std::fmt::Debug for ModeRegistry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ModeRegistry")
+            .field("modes_count", &self.modes.len())
+            .field("active_mode", &self.active_mode)
+            .field("default_mode", &self.default_mode)
+            .field("mode_order", &self.mode_order)
+            .finish_non_exhaustive()
+    }
+}
+
 impl ModeRegistry {
     /// Creates a new empty ModeRegistry.
     pub fn new() -> Self {
@@ -49,7 +60,7 @@ impl ModeRegistry {
             self.active_mode = mode_name.to_string();
             Ok(())
         } else {
-            Err(LatuiError::App(format!("Mode '{}' not found", mode_name)))
+            Err(LatuiError::App(format!("Mode '{mode_name}' not found")))
         }
     }
 

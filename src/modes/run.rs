@@ -1,4 +1,5 @@
 use crate::core::{item::Item, mode::Mode, searchable_item::SearchableItem};
+use crate::core::utils::{current_timestamp, latui_xdg};
 use crate::error::LatuiError;
 use crate::search::engine::SearchEngine;
 use crate::tracking::frequency::FrequencyTracker;
@@ -6,7 +7,7 @@ use crate::tracking::frequency::FrequencyTracker;
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::path::PathBuf;
-use std::process::Command;
+
 use std::time::Instant;
 
 /// Maximum number of commands to keep in history
@@ -24,6 +25,7 @@ struct HistoryEntry {
 }
 
 /// Run mode for executing shell commands with intelligent history tracking
+#[derive(Debug)]
 pub struct RunMode {
     /// Command history (most recent first)
     history: VecDeque<HistoryEntry>,
@@ -80,12 +82,10 @@ impl Default for RunMode {
 impl RunMode {
     /// Load command history from disk
     fn load_history(&mut self) -> Result<(), LatuiError> {
-        use xdg::BaseDirectories;
-
-        let xdg = BaseDirectories::with_prefix("latui");
+        let xdg = latui_xdg();
         let history_path = xdg
             .place_data_file("run_history.json")
-            .map_err(|e| LatuiError::Io(std::io::Error::other(e)))?;
+            .map_err(|e| LatuiError::Xdg(e.to_string()))?;
 
         self.history_path = Some(history_path.clone());
 
@@ -136,21 +136,18 @@ impl RunMode {
             return Ok(());
         }
 
-        let history_path = match &self.history_path {
-            Some(path) => path,
-            None => return Ok(()),
+        let Some(history_path) = &self.history_path else {
+            return Ok(());
         };
 
         let entries: Vec<HistoryEntry> = self.history.iter().cloned().collect();
-
-        let json = serde_json::to_string_pretty(&entries)
-            .map_err(|e| LatuiError::Io(std::io::Error::other(e)))?;
 
         // Write to temporary file for atomicity
         let mut tmp_path = history_path.clone();
         tmp_path.set_extension("tmp");
 
-        std::fs::write(&tmp_path, json)?;
+        let file = std::fs::File::create(&tmp_path)?;
+        let writer = std::io::BufWriter::new(file);
 
         // Set secure permissions on tmp file before moving
         #[cfg(unix)]
@@ -159,6 +156,8 @@ impl RunMode {
             let _ = std::fs::set_permissions(&tmp_path, std::fs::Permissions::from_mode(0o600));
         }
 
+        serde_json::to_writer_pretty(writer, &entries)
+            .map_err(|e| LatuiError::Io(std::io::Error::other(e)))?;
         std::fs::rename(&tmp_path, history_path)?;
 
         self.dirty = false;
@@ -174,10 +173,11 @@ impl RunMode {
         // Check if command already exists in history
         if let Some(pos) = self.history.iter().position(|e| e.command == command) {
             // Move to front and increment count
-            let mut entry = self.history.remove(pos).unwrap();
-            entry.execution_count += 1;
-            entry.timestamp = now;
-            self.history.push_front(entry);
+            if let Some(mut entry) = self.history.remove(pos) {
+                entry.execution_count += 1;
+                entry.timestamp = now;
+                self.history.push_front(entry);
+            }
         } else {
             // Add new entry
             let entry = HistoryEntry {
@@ -197,25 +197,41 @@ impl RunMode {
         self.rebuild_searchable_history();
     }
 
+    /// Create a UI Item from a history entry
+    fn create_history_item(entry: &HistoryEntry) -> Item {
+        Item {
+            id: format!("cmd:{}", entry.command),
+            title: entry.command.clone(),
+            search_text: entry.command.to_lowercase(),
+            description: Some(format!(
+                "Executed {} time{}",
+                entry.execution_count,
+                if entry.execution_count == 1 { "" } else { "s" }
+            )),
+            icon: None,
+            metadata: Some(entry.command.clone()),
+        }
+    }
+
+    /// Create a UI Item for direct command execution
+    fn create_direct_item(command: &str) -> Item {
+        Item {
+            id: format!("direct:{command}"),
+            title: command.to_string(),
+            search_text: command.to_lowercase(),
+            description: Some("Execute command".to_string()),
+            icon: None,
+            metadata: Some(command.to_string()),
+        }
+    }
+
     /// Rebuild searchable items from history
     fn rebuild_searchable_history(&mut self) {
         self.searchable_history = self
             .history
             .iter()
             .map(|entry| {
-                let item = Item {
-                    id: format!("cmd:{}", entry.command),
-                    title: entry.command.clone(),
-                    search_text: entry.command.to_lowercase(),
-                    description: Some(format!(
-                        "Executed {} time{}",
-                        entry.execution_count,
-                        if entry.execution_count == 1 { "" } else { "s" }
-                    )),
-                    icon: None,
-                    metadata: Some(entry.command.clone()),
-                };
-
+                let item = Self::create_history_item(entry);
                 SearchableItem::new(item).with_field("command", &entry.command, 10.0)
             })
             .collect();
@@ -229,23 +245,12 @@ impl RunMode {
             .take(RECENT_COMMANDS_LIMIT)
             .enumerate()
             .map(|(idx, entry)| {
-                let item = Item {
-                    id: format!("cmd:{}", entry.command),
-                    title: entry.command.clone(),
-                    search_text: entry.command.to_lowercase(),
-                    description: Some(format!(
-                        "Executed {} time{}",
-                        entry.execution_count,
-                        if entry.execution_count == 1 { "" } else { "s" }
-                    )),
-                    icon: None,
-                    metadata: Some(entry.command.clone()),
-                };
+                let item = Self::create_history_item(entry);
 
                 // Score based on recency and frequency
-                let recency_score = (RECENT_COMMANDS_LIMIT - idx) as f64 * 10.0;
-                let frequency_score = (entry.execution_count as f64).ln() * 20.0;
-                let mut score = recency_score + frequency_score;
+                #[allow(clippy::cast_precision_loss)]
+                let mut score =
+                    ((RECENT_COMMANDS_LIMIT - idx) as f64).mul_add(10.0, (entry.execution_count as f64).ln_1p() * 20.0);
 
                 // Add frequency tracker boost if available
                 if let Some(ref tracker) = self.frequency_tracker {
@@ -263,7 +268,7 @@ impl RunMode {
     }
 
     /// Validate command for security
-    fn validate_command(&self, command: &str) -> Result<(), LatuiError> {
+    fn validate_command(command: &str) -> Result<(), LatuiError> {
         // Check length
         if command.is_empty() {
             return Err(LatuiError::App("Command cannot be empty".to_string()));
@@ -283,45 +288,37 @@ impl RunMode {
 
     /// Execute a shell command
     fn execute_command(&mut self, command: &str) -> Result<(), LatuiError> {
-        self.validate_command(command)?;
+        Self::validate_command(command)?;
 
-        tracing::info!("Executing command: {}", command);
+        tracing::info!("Executing command: {command}");
 
-        // Spawn command in background
-        let child = Command::new(&self.shell).arg("-c").arg(command).spawn();
+        // Spawn command via centralized engine
+        crate::core::execution::ExecutionEngine::spawn_shell(command, &[])?;
 
-        match child {
-            Ok(_) => {
-                self.add_to_history(command);
+        self.add_to_history(command);
 
-                // Record in frequency tracker
-                if let Some(ref mut tracker) = self.frequency_tracker {
-                    let id = format!("cmd:{}", command);
-                    if let Err(e) = tracker.record_launch(&id) {
-                        tracing::error!("Failed to record command execution: {}", e);
-                    }
-                }
-
-                Ok(())
-            }
-            Err(e) => {
-                tracing::error!("Failed to execute command '{}': {}", command, e);
-                Err(LatuiError::Io(e))
+        // Record in frequency tracker
+        if let Some(ref mut tracker) = self.frequency_tracker {
+            let id = format!("cmd:{command}");
+            if let Err(e) = tracker.record_launch(&id) {
+                tracing::error!("Failed to record command execution: {e}");
             }
         }
+
+        Ok(())
     }
 }
 
 impl Mode for RunMode {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "run"
     }
 
-    fn icon(&self) -> &str {
+    fn icon(&self) -> &'static str {
         "🚀"
     }
 
-    fn description(&self) -> &str {
+    fn description(&self) -> &'static str {
         "Command Executor"
     }
 
@@ -350,14 +347,7 @@ impl Mode for RunMode {
         let mut results: Vec<(Item, f64)> = Vec::new();
 
         // Always include direct execution option as first result
-        let direct_item = Item {
-            id: format!("direct:{}", q),
-            title: q.to_string(),
-            search_text: q.to_lowercase(),
-            description: Some("Execute command".to_string()),
-            icon: None,
-            metadata: Some(q.to_string()),
-        };
+        let direct_item = Self::create_direct_item(q);
         results.push((direct_item, 10000.0)); // Highest priority
 
         // Search through history
@@ -368,7 +358,7 @@ impl Mode for RunMode {
 
             // Apply frequency boosts
             if let Some(ref tracker) = self.frequency_tracker {
-                for (item, score) in history_results.iter_mut() {
+                for (item, score) in &mut history_results {
                     *score += tracker.get_frequency_boost(&item.id);
                     *score += tracker.get_recency_boost(&item.id);
                     *score += tracker.get_query_boost(q, &item.id);
@@ -420,7 +410,7 @@ impl Mode for RunMode {
 
         // Save history after execution
         if let Err(e) = self.save_history() {
-            tracing::error!("Failed to save command history: {}", e);
+            tracing::error!("Failed to save command history: {e}");
         }
 
         Ok(())
@@ -455,13 +445,7 @@ impl Drop for RunMode {
     }
 }
 
-/// Get current Unix timestamp
-fn current_timestamp() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
-}
+
 
 #[cfg(test)]
 mod tests {
@@ -510,10 +494,10 @@ mod tests {
     fn test_validate_command() {
         let mode = RunMode::new();
 
-        assert!(mode.validate_command("ls -la").is_ok());
-        assert!(mode.validate_command("").is_err());
-        assert!(mode.validate_command(&"x".repeat(5000)).is_err());
-        assert!(mode.validate_command("test\0null").is_err());
+        assert!(RunMode::validate_command("ls -la").is_ok());
+        assert!(RunMode::validate_command("").is_err());
+        assert!(RunMode::validate_command(&"x".repeat(5000)).is_err());
+        assert!(RunMode::validate_command("test\0null").is_err());
     }
 
     #[test]

@@ -2,27 +2,32 @@ use latui::app::state::AppState;
 use latui::config::keywords::KeywordMapper;
 use latui::config::loader::load_user_config_path;
 use latui::config::settings::load_user_settings;
+use latui::core::utils::latui_xdg;
 use latui::modes::{
-    apps::AppsMode, clipboard::ClipboardMode, custom::CustomMode, emojis::EmojisMode, files::FilesMode, run::RunMode,
+    apps::AppsMode, clipboard::ClipboardMode, custom::CustomMode,
+    emojis::EmojisMode, files::FilesMode, run::RunMode,
 };
 use latui::tracking::frequency::FrequencyTracker;
 use std::fs;
-
-use tracing::{Level, debug, error, info};
-use tracing_appender::rolling;
-use xdg::BaseDirectories;
-
 use std::io;
+use std::process::ExitCode;
 
 use crossterm::{
     execute,
-    terminal::{EnterAlternateScreen, LeaveAlternateScreen, enable_raw_mode},
+    terminal::{
+        disable_raw_mode, enable_raw_mode, EnterAlternateScreen,
+        LeaveAlternateScreen,
+    },
 };
+use ratatui::{backend::CrosstermBackend, Terminal};
+use tracing::{debug, error, info};
+use tracing_appender::rolling;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
-use ratatui::{Terminal, backend::CrosstermBackend};
-
+/// Initializes the tracing subscriber with a rolling file appender and
+/// environment-based filtering.
 fn init_tracing() -> anyhow::Result<tracing_appender::non_blocking::WorkerGuard> {
-    let xdg = BaseDirectories::with_prefix("latui");
+    let xdg = latui_xdg();
     let log_dir = xdg.place_state_file("logs")?;
     let file_appender = rolling::daily(
         log_dir.parent().unwrap_or(std::path::Path::new("/tmp")),
@@ -30,10 +35,17 @@ fn init_tracing() -> anyhow::Result<tracing_appender::non_blocking::WorkerGuard>
     );
     let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
 
-    tracing_subscriber::fmt()
-        .with_writer(non_blocking)
-        .with_max_level(Level::DEBUG)
-        .with_ansi(false)
+    // Filter by LATUI_LOG, defaulting to INFO
+    let filter =
+        EnvFilter::try_from_env("LATUI_LOG").unwrap_or_else(|_| EnvFilter::new("info"));
+
+    tracing_subscriber::registry()
+        .with(filter)
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_writer(non_blocking)
+                .with_ansi(false),
+        )
         .init();
 
     Ok(guard)
@@ -45,8 +57,8 @@ fn secure_permissions(path: &std::path::Path) {
     let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700));
 }
 
-fn main() -> anyhow::Result<()> {
-    let xdg = BaseDirectories::with_prefix("latui");
+fn main() -> ExitCode {
+    let xdg = latui_xdg();
 
     // Ensure core directories exist and are secure
     if let Ok(data_dir) = xdg.create_data_directory("") {
@@ -58,27 +70,46 @@ fn main() -> anyhow::Result<()> {
         secure_permissions(&state_dir);
     }
 
-    let _guard =
-        init_tracing().map_err(|e| anyhow::anyhow!("Failed to initialize logging: {}", e))?;
-    info!("Starting Latui launcher...");
+    let _guard = match init_tracing() {
+        Ok(g) => g,
+        Err(e) => {
+            eprintln!("latui: fatal error initializing logging: {}", e);
+            return ExitCode::FAILURE;
+        }
+    };
+
+    // Set panic hook to ensure terminal restoration
+    std::panic::set_hook(Box::new(|panic_info| {
+        let _ = disable_raw_mode();
+        let _ = execute!(io::stdout(), LeaveAlternateScreen);
+        eprintln!("latui: fatal panic occurred - check logs for detail");
+        eprintln!("{panic_info}");
+        tracing::error!("FATAL PANIC: {}", panic_info);
+    }));
+
+    info!("Starting LaTUI launcher...");
 
     let res = run_app();
 
     // Ensure raw mode is correctly disabled regardless of UI panics
-    if let Err(e) = crossterm::terminal::disable_raw_mode() {
+    if let Err(e) = disable_raw_mode() {
         error!("Failed to disable raw mode on exit: {}", e);
     }
     if let Err(e) = execute!(io::stdout(), LeaveAlternateScreen) {
         error!("Failed to leave alternate screen: {}", e);
     }
 
-    if let Err(err) = res {
-        error!("Fatal application error recorded: {:?}", err);
-        return Err(err);
+    match res {
+        Ok(()) => {
+            info!("LaTUI successfully shut down.");
+            ExitCode::SUCCESS
+        }
+        Err(err) => {
+            error!(error = %err, "Fatal application failure");
+            eprintln!("latui: fatal error: {err}");
+            ExitCode::FAILURE
+        }
     }
-
-    info!("Latui launcher successfully shut down.");
-    Ok(())
 }
 
 fn run_app() -> anyhow::Result<()> {
@@ -93,8 +124,8 @@ fn run_app() -> anyhow::Result<()> {
     let mut app = AppState::new();
     app.detect_image_support();
 
-    // Initialize common components
-    let xdg = BaseDirectories::with_prefix("latui");
+    // Initialize usage tracker
+    let xdg = latui_xdg();
     let frequency_tracker = match xdg.place_data_file("usage.db") {
         Ok(db_path) => match FrequencyTracker::new(&db_path) {
             Ok(mut tracker) => {
@@ -121,11 +152,11 @@ fn run_app() -> anyhow::Result<()> {
         info!("Loaded custom keywords from {:?}", path);
     }
 
-    // Load the full application configuration (including themes)
+    // Load configuration
     app.config = load_user_settings();
     let apps_settings = app.config.modes.apps.clone();
 
-    // Register built-in modes with injected dependencies
+    // Register built-in modes
     app.mode_registry.register(
         "apps",
         Box::new(AppsMode::new(
@@ -142,7 +173,7 @@ fn run_app() -> anyhow::Result<()> {
     app.mode_registry
         .register("emojis", Box::new(EmojisMode::new()));
 
-    // Register custom modes from configuration
+    // Register custom modes
     for (id, custom_config) in app.config.modes.custom.clone() {
         app.mode_registry.register(
             &id,
@@ -150,8 +181,8 @@ fn run_app() -> anyhow::Result<()> {
         );
     }
 
-    // Load all registered modes
-    info!("Initializing modes...");
+    // Load registered modes
+    info!("Initializing search modes...");
     for mode_name in app.mode_registry.get_mode_order().to_vec() {
         if let Err(e) = app.mode_registry.switch_mode(&mode_name) {
             error!("Failed to switch to mode '{}': {}", mode_name, e);
@@ -159,7 +190,7 @@ fn run_app() -> anyhow::Result<()> {
         }
 
         if let Some(mode) = app.mode_registry.get_active_mode_mut() {
-            debug!("Loading mode: {}", mode.name());
+            debug!("Loading items for: {}", mode.name());
             if let Err(e) = mode.load() {
                 error!("Failed to load mode '{}': {}", mode.name(), e);
             }
@@ -173,9 +204,12 @@ fn run_app() -> anyhow::Result<()> {
         app.filtered_items = mode.search("");
     }
 
-    let controller = latui::app::controller::AppController::new();
-    let res = controller.run(&mut terminal, &mut app);
+    // Start main event loop
+    let res = latui::app::controller::run(&mut terminal, &mut app);
 
-    terminal.show_cursor()?;
-    res
+    // Final terminal cleanup
+    let _ = terminal.show_cursor();
+    
+    // Convert LatuiError to anyhow for main-level reporting
+    res.map_err(|e| anyhow::anyhow!(e))
 }

@@ -1,13 +1,14 @@
 use crate::core::item::Item;
 use crate::core::searchable_item::{SearchField, SearchableItem};
-use crate::matcher::fuzzy::FuzzyMatcher;
 use crate::search::tokenizer::Tokenizer;
 use crate::search::typo::TypoTolerance;
+use rayon::prelude::*;
+use nucleo_matcher::{Matcher, Config, Utf32Str, pattern::{Pattern, CaseMatching, Normalization}};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SearchEngine {
     tokenizer: Tokenizer,
     typo_tolerance: TypoTolerance,
-    fuzzy_matcher: FuzzyMatcher,
 }
 
 impl Default for SearchEngine {
@@ -17,64 +18,74 @@ impl Default for SearchEngine {
 }
 
 impl SearchEngine {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             tokenizer: Tokenizer::new(),
             typo_tolerance: TypoTolerance::new(),
-            fuzzy_matcher: FuzzyMatcher::new(),
         }
     }
 
-    pub fn search(&mut self, query: &str, items: &[SearchableItem]) -> Vec<Item> {
+    pub fn search(&self, query: &str, items: &[SearchableItem]) -> Vec<Item> {
         self.search_scored(query, items)
             .into_iter()
             .map(|(item, _)| item)
             .collect()
     }
 
-    pub fn search_scored(&mut self, query: &str, items: &[SearchableItem]) -> Vec<(Item, f64)> {
+    pub fn search_scored(&self, query: &str, items: &[SearchableItem]) -> Vec<(Item, f64)> {
         if query.is_empty() {
-            return items.iter().map(|s| (s.item.clone(), 0.0)).collect();
+            return items.iter().take(50).map(|s| (s.item.clone(), 0.0)).collect();
         }
 
         let q = query.to_lowercase();
         let query_tokens = self.tokenizer.tokenize(&q);
 
-        let mut scored_items: Vec<(usize, f64)> = Vec::new();
+        let mut results: Vec<(usize, f64)> = items
+            .par_iter()
+            .enumerate()
+            .map_init(
+                || Matcher::new(Config::DEFAULT),
+                |matcher, (idx, searchable)| {
+                    let mut best_score: f64 = 0.0;
 
-        for (idx, searchable) in items.iter().enumerate() {
-            let mut best_score: f64 = 0.0;
+                    // Check acronym match
+                    for acronym in &searchable.acronyms {
+                        if acronym == &q {
+                            best_score = best_score.max(2500.0);
+                        } else if acronym.starts_with(&q) {
+                            best_score = best_score.max(2000.0);
+                        }
+                    }
 
-            // Check acronym match
-            for acronym in &searchable.acronyms {
-                if acronym == &q {
-                    best_score = best_score.max(2500.0);
-                } else if acronym.starts_with(&q) {
-                    best_score = best_score.max(2000.0);
-                }
-            }
+                    // Score each field
+                    let fields = searchable.get_weighted_fields();
+                    for field in fields {
+                        let field_score = self.score_field(&q, &query_tokens, &field, matcher);
+                        best_score = best_score.max(field_score * field.weight);
+                    }
 
-            // Score each field
-            let fields = searchable.get_weighted_fields();
-            for field in fields {
-                let field_score = self.score_field(&q, &query_tokens, &field);
-                best_score = best_score.max(field_score * field.weight);
-            }
+                    if best_score > 0.0 {
+                        Some((idx, best_score))
+                    } else {
+                        None
+                    }
+                },
+            )
+            .flatten()
+            .collect();
 
-            if best_score > 0.0 {
-                scored_items.push((idx, best_score));
-            }
-        }
+        // Sort by score
+        results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
-        scored_items.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-
-        scored_items
+        // Return up to 50 results for UI performance
+        results
             .into_iter()
+            .take(50)
             .map(|(idx, score)| (items[idx].item.clone(), score))
             .collect()
     }
 
-    fn score_field(&mut self, query: &str, query_tokens: &[String], field: &SearchField) -> f64 {
+    fn score_field(&self, query: &str, query_tokens: &[String], field: &SearchField, matcher: &mut Matcher) -> f64 {
         let field_text = field.text.to_lowercase();
 
         // Exact match
@@ -135,9 +146,11 @@ impl SearchEngine {
 
         // Fuzzy match
         if score == 0.0 {
-            let results = self.fuzzy_matcher.filter(query, &[&field_text]);
-            if let Some((_, f_score)) = results.first() {
-                score = (*f_score as f64).min(200.0);
+            let pattern = Pattern::parse(query, CaseMatching::Ignore, Normalization::Smart);
+            let mut buf = Vec::new();
+            let haystack = Utf32Str::new(&field_text, &mut buf);
+            if let Some(f_score) = pattern.score(haystack, matcher) {
+                score = (f_score as f64).min(200.0);
             }
         }
 

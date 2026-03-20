@@ -14,9 +14,10 @@ use serde::Serialize;
 use std::collections::{HashSet, hash_map::DefaultHasher};
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+
 
 /// Apps launcher mode backed by freedesktop desktop entries.
+#[derive(Debug)]
 pub struct AppsMode {
     items: Vec<SearchableItem>,
     trie: Option<MultiTokenTrie>,
@@ -27,6 +28,18 @@ pub struct AppsMode {
     settings: AppsModeSettings,
     current_desktop_envs: Vec<String>,
     icon_resolver: Option<AppIconResolver>,
+}
+
+use crate::search::tokenizer::Tokenizer;
+
+#[derive(Debug, Clone)]
+struct AppIconResolver {
+    theme: String,
+    size: u16,
+    scale: u16,
+    prefer_svg: bool,
+    fallback: String,
+    render_mode: AppsIconRenderMode,
 }
 
 impl AppsMode {
@@ -87,6 +100,7 @@ impl AppsMode {
                             .map(|n| n.to_string())
                             .unwrap_or_default();
 
+                        #[allow(clippy::redundant_closure_for_method_calls)]
                         let exec = desktop_entry
                             .exec()
                             .map(|e| e.to_string())
@@ -150,6 +164,7 @@ impl AppsMode {
                             .generic_name::<&str>(&[])
                             .map(|g| g.to_string());
                         let description = desktop_entry.comment::<&str>(&[]).map(|c| c.to_string());
+                        #[allow(clippy::redundant_closure_for_method_calls)]
                         let icon_name = desktop_entry.icon().map(|i| i.to_string());
 
                         let executable = exec
@@ -318,8 +333,7 @@ impl AppsMode {
             icons_theme: self
                 .icon_resolver
                 .as_ref()
-                .map(|r| r.theme.clone())
-                .unwrap_or_else(|| "disabled".to_string()),
+                .map_or_else(|| "disabled".to_string(), |r| r.theme.clone()),
             icons_size: self.settings.icons.size,
             icons_scale: self.settings.icons.scale,
             icons_prefer_svg: self.settings.icons.prefer_svg,
@@ -329,9 +343,8 @@ impl AppsMode {
             icons_exclude: self.settings.icons.exclude.clone(),
         };
 
-        let serialized = serde_json::to_string(&material).unwrap_or_default();
         let mut hasher = DefaultHasher::new();
-        serialized.hash(&mut hasher);
+        material.hash(&mut hasher);
         format!("{:016x}", hasher.finish())
     }
 
@@ -365,8 +378,7 @@ impl AppsMode {
                         .modified()
                         .ok()
                         .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
-                        .map(|dur| dur.as_secs())
-                        .unwrap_or(0);
+                        .map_or(0, |dur| dur.as_secs());
                     newest_mtime = newest_mtime.max(modified);
 
                     let mut file_hasher = DefaultHasher::new();
@@ -388,15 +400,15 @@ impl AppsMode {
 }
 
 impl Mode for AppsMode {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "apps"
     }
 
-    fn icon(&self) -> &str {
+    fn icon(&self) -> &'static str {
         "🔥"
     }
 
-    fn description(&self) -> &str {
+    fn description(&self) -> &'static str {
         "Applications"
     }
 
@@ -464,8 +476,6 @@ impl Mode for AppsMode {
                 .map(|(idx, _)| self.items[idx].item.clone())
                 .collect();
         }
-
-        use crate::search::tokenizer::Tokenizer;
 
         let start = std::time::Instant::now();
         let tokenizer = Tokenizer::new();
@@ -544,28 +554,12 @@ impl Mode for AppsMode {
         }
 
         if let Some(cmd) = &item.metadata {
-            let parts: Vec<&str> = cmd.split_whitespace().collect();
-            if parts.is_empty() {
-                return Ok(());
-            }
-
-            let shell_chars = [
-                ';', '&', '|', '<', '>', '(', ')', '$', '`', '\\', '"', '\'', '*', '?', '[', ']',
-                '~', '!',
-            ];
-            let has_shell_chars = cmd.chars().any(|c| shell_chars.contains(&c));
-
-            let child = if !has_shell_chars {
-                Command::new(parts[0]).args(&parts[1..]).spawn()
-            } else {
-                tracing::warn!("Executing command with shell features: {}", cmd);
-                Command::new("sh").arg("-c").arg(cmd).spawn()
-            };
-
-            if let Err(e) = child {
-                tracing::error!("Failed to execute '{}': {}", cmd, e);
-                return Err(LatuiError::Io(e));
-            }
+            tracing::info!("AppsMode: launching '{}' via {}", item.title, cmd);
+            
+            // For desktop entries, we often have complex commands with shell features
+            // or we might want to just spawn the binary directly.
+            // Using spawn_shell allows supporting desktop file field codes if they were preserved.
+            crate::core::execution::ExecutionEngine::spawn_shell(cmd, &[])?;
         } else {
             tracing::warn!(
                 "Apps mode received item without metadata (command): {}",
@@ -594,7 +588,7 @@ impl Mode for AppsMode {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize, Hash)]
 struct DesktopFingerprint {
     file_count: u64,
     newest_mtime: u64,
@@ -602,7 +596,7 @@ struct DesktopFingerprint {
     path_hash: u64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Hash)]
 struct AppsCacheKeyMaterial {
     desktop_fingerprint: DesktopFingerprint,
     desktop_dirs: Vec<String>,
@@ -619,16 +613,6 @@ struct AppsCacheKeyMaterial {
     icons_fallback: String,
     icons_include: Vec<String>,
     icons_exclude: Vec<String>,
-}
-
-#[derive(Clone)]
-struct AppIconResolver {
-    theme: String,
-    size: u16,
-    scale: u16,
-    prefer_svg: bool,
-    fallback: String,
-    render_mode: AppsIconRenderMode,
 }
 
 impl AppIconResolver {
@@ -665,7 +649,7 @@ impl AppIconResolver {
         let path_hint = icon_path.as_ref().and_then(|path| {
             path.file_stem()
                 .and_then(|stem| stem.to_str())
-                .map(|stem| stem.to_lowercase())
+                .map(str::to_lowercase)
         });
 
         let hint = path_hint.or_else(|| icon_name.as_ref().and_then(|name| icon_hint(name)));
@@ -674,7 +658,7 @@ impl AppIconResolver {
             AppsIconRenderMode::IconName => {
                 icon_name.as_ref().map(|value| compact_icon_name(value))
             }
-            AppsIconRenderMode::Thumbnail => self.thumbnail_icon(
+            AppsIconRenderMode::Thumbnail => Self::thumbnail_icon(
                 icon_name.as_deref(),
                 hint.as_deref(),
                 icon_path.as_deref(),
@@ -692,7 +676,6 @@ impl AppIconResolver {
     }
 
     fn thumbnail_icon(
-        &self,
         icon_name: Option<&str>,
         icon_hint: Option<&str>,
         icon_path: Option<&Path>,
@@ -749,8 +732,7 @@ fn sanitize_exec(exec: &str) -> String {
 fn is_safe_desktop_file(path: &Path, base_dir: &Path) -> bool {
     path.extension()
         .and_then(|ext| ext.to_str())
-        .map(|ext| ext.eq_ignore_ascii_case("desktop"))
-        .unwrap_or(false)
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("desktop"))
         && !path.is_symlink()
         && path.starts_with(base_dir)
 }
@@ -781,7 +763,7 @@ fn current_desktop_envs() -> Vec<String> {
             raw.split([':', ';', ','])
                 .map(str::trim)
                 .filter(|value| !value.is_empty())
-                .map(|value| value.to_lowercase())
+                .map(str::to_lowercase)
                 .collect()
         })
         .unwrap_or_default()
@@ -974,7 +956,7 @@ fn icon_braille_thumbnail(path: &Path) -> Option<String> {
     }
 }
 
-fn braille_bit(x: u32, y: u32) -> u8 {
+const fn braille_bit(x: u32, y: u32) -> u8 {
     match (x, y) {
         (0, 0) => 1 << 0,
         (0, 1) => 1 << 1,

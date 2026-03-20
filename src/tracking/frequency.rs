@@ -1,8 +1,9 @@
 use crate::tracking::database::{Database, DatabaseError};
 use std::path::Path;
-use std::time::{SystemTime, UNIX_EPOCH};
+use crate::core::utils::current_timestamp;
 
 /// Tracks application launch frequency and calculates boosts
+#[derive(Debug)]
 pub struct FrequencyTracker {
     db: Database,
 }
@@ -37,7 +38,7 @@ impl FrequencyTracker {
                 // - 10 launches: 47.96
                 // - 50 launches: 76.35
                 // - 100 launches: 92.10
-                ((stats.launch_count as f64 + 1.0).ln() * 20.0).min(100.0)
+                ((f64::from(stats.launch_count)).ln_1p() * 20.0).min(100.0)
             }
             _ => 0.0,
         }
@@ -81,7 +82,7 @@ impl FrequencyTracker {
         match self.db.get_query_stats(query) {
             Ok(stats) => {
                 // Find this app in the stats
-                let total_selections: u32 = stats.iter().map(|(_, count)| count).sum();
+                let total_selections: u32 = stats.iter().map(|(_, count): &(String, u32)| *count).sum();
                 if total_selections == 0 {
                     return 0.0;
                 }
@@ -90,8 +91,7 @@ impl FrequencyTracker {
                 let app_selections = stats
                     .iter()
                     .find(|(id, _)| id == app_id)
-                    .map(|(_, count)| *count)
-                    .unwrap_or(0);
+                    .map_or(0, |(_, count)| *count);
 
                 if app_selections == 0 {
                     return 0.0;
@@ -99,7 +99,7 @@ impl FrequencyTracker {
 
                 // Calculate percentage-based boost
                 // If user always selects this app for this query, give max boost
-                let percentage = (app_selections as f64 / total_selections as f64) * 100.0;
+                let percentage = (f64::from(app_selections) / f64::from(total_selections)) * 100.0;
 
                 // Scale: 0-100% → 0-50 points
                 (percentage / 2.0).min(50.0)
@@ -114,10 +114,4 @@ impl FrequencyTracker {
     }
 }
 
-/// Get current Unix timestamp
-fn current_timestamp() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
-}
+

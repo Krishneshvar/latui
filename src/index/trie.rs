@@ -5,12 +5,13 @@ use tracing::{debug, info};
 
 pub const MAX_TRIE_WORD_LENGTH: usize = 32;
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct TrieNode {
-    pub children: FxHashMap<char, TrieNode>,
+    pub children: FxHashMap<char, Self>,
     pub items: FxHashSet<usize>,
 }
 
+#[derive(Debug)]
 pub struct Trie {
     root: TrieNode,
 }
@@ -56,6 +57,7 @@ impl Trie {
     }
 }
 
+#[derive(Debug)]
 /// Multi-token trie for efficient prefix filtering
 pub struct MultiTokenTrie {
     trie: Trie,

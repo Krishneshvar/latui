@@ -218,6 +218,7 @@ impl Default for SearchConfig {
     }
 }
 
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ResultsConfig {
     #[serde(default = "default_true")]
@@ -309,25 +310,27 @@ pub struct ScrollbarConfig {
 }
 
 // Default helper functions for serde
-fn default_true() -> bool { true }
+const fn default_true() -> bool { true }
 fn default_mode() -> String { "apps".to_string() }
-fn default_max_results() -> usize { 50 }
+const fn default_max_results() -> usize { 50 }
 fn default_theme_name() -> String { "dark".to_string() }
-fn default_margin() -> [u16; 4] { [0, 0, 0, 0] }
-fn default_navbar_height() -> u16 { 3 }
-fn default_search_height() -> u16 { 3 }
-fn default_results_min() -> u16 { 1 }
-fn default_navbar_pos() -> NavbarPosition { NavbarPosition::Top }
+const fn default_margin() -> [u16; 4] { [0, 0, 0, 0] }
+const fn default_navbar_height() -> u16 { 3 }
+const fn default_search_height() -> u16 { 3 }
+const fn default_results_min() -> u16 { 1 }
+const fn default_navbar_pos() -> NavbarPosition { NavbarPosition::Top }
 fn default_navbar_title() -> String { "LaTUI".to_string() }
-fn default_title_align() -> TitleAlignment { TitleAlignment::Left }
-fn default_border_style() -> BorderStyle { BorderStyle::Rounded }
+const fn default_title_align() -> TitleAlignment { TitleAlignment::Left }
+const fn default_border_style() -> BorderStyle { BorderStyle::Rounded }
+#[allow(clippy::unnecessary_wraps)]
 fn default_active_fg() -> Option<String> { Some("#7aa2f7".to_string()) }
 fn default_active_modifier() -> Vec<TextModifier> { vec![TextModifier::Bold] }
+#[allow(clippy::unnecessary_wraps)]
 fn default_inactive_fg() -> Option<String> { Some("#565f89".to_string()) }
 fn default_prompt() -> String { "> ".to_string() }
 fn default_results_title() -> String { "Results ({count})".to_string() }
-fn default_item_display() -> ItemDisplay { ItemDisplay::IconNameDesc }
-fn default_item_padding() -> [u16; 2] { [0, 1] }
+const fn default_item_display() -> ItemDisplay { ItemDisplay::IconNameDesc }
+const fn default_item_padding() -> [u16; 2] { [0, 1] }
 fn default_selected_modifier() -> Vec<TextModifier> { vec![TextModifier::Bold] }
 fn default_selection_symbol() -> String { ">> ".to_string() }
 fn default_thumb() -> String { "█".to_string() }

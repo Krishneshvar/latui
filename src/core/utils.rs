@@ -45,3 +45,48 @@ pub fn notify_error(title: &str, message: &str) {
         .arg(message)
         .spawn();
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_merge_toml_basic() {
+        let mut base = toml::Value::Table(toml::toml! {
+            [section]
+            a = 1
+            b = 2
+        });
+        let overrides = toml::Value::Table(toml::toml! {
+            [section]
+            b = 3
+            c = 4
+        });
+        
+        merge_toml(&mut base, overrides);
+        
+        assert_eq!(base["section"]["a"].as_integer(), Some(1));
+        assert_eq!(base["section"]["b"].as_integer(), Some(3));
+        assert_eq!(base["section"]["c"].as_integer(), Some(4));
+    }
+
+    #[test]
+    fn test_merge_toml_replaces_type() {
+        let mut base = toml::Value::Table(toml::toml! {
+            val = "string"
+        });
+        let overrides = toml::Value::Table(toml::toml! {
+            val = 42
+        });
+        
+        merge_toml(&mut base, overrides);
+        
+        assert_eq!(base["val"].as_integer(), Some(42));
+    }
+
+    #[test]
+    fn test_current_timestamp() {
+        let ts = current_timestamp();
+        assert!(ts > 1_700_000_000); // Sanity check
+    }
+}

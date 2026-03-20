@@ -776,7 +776,7 @@ mod tests {
     fn test_recents_size_capped() {
         let mut mode = FilesMode::new();
         for i in 0..MAX_RECENTS + 20 {
-            mode.add_to_recents(&format!("/tmp/file_{}.txt", i));
+            mode.add_to_recents(&format!("/tmp/file_{i}.txt"));
         }
         assert_eq!(mode.recents.len(), MAX_RECENTS);
     }

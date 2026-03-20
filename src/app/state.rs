@@ -162,3 +162,72 @@ impl Default for AppState {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::item::Item;
+
+    #[test]
+    fn test_app_state_initialization() {
+        let state = AppState::new();
+        assert_eq!(state.query, "");
+        assert!(state.filtered_items.is_empty());
+        assert_eq!(state.list_state.selected(), Some(0));
+        assert_eq!(state.active_tab, 0);
+        assert!(!state.show_preview);
+    }
+
+    #[test]
+    fn test_navigation_next_wraps() {
+        let mut state = AppState::new();
+        state.filtered_items = vec![
+            Item::new("1", "Item 1", "Desc 1"),
+            Item::new("2", "Item 2", "Desc 2"),
+        ];
+        
+        state.list_state.select(Some(0));
+        state.next();
+        assert_eq!(state.list_state.selected(), Some(1));
+        
+        state.next();
+        assert_eq!(state.list_state.selected(), Some(0)); // Wraps
+    }
+
+    #[test]
+    fn test_navigation_previous_wraps() {
+        let mut state = AppState::new();
+        state.filtered_items = vec![
+            Item::new("1", "Item 1", "Desc 1"),
+            Item::new("2", "Item 2", "Desc 2"),
+        ];
+        
+        state.list_state.select(Some(0));
+        state.previous();
+        assert_eq!(state.list_state.selected(), Some(1)); // Wraps to end
+        
+        state.previous();
+        assert_eq!(state.list_state.selected(), Some(0));
+    }
+
+    #[test]
+    fn test_navigation_empty_list() {
+        let mut state = AppState::new();
+        state.filtered_items = vec![];
+        
+        state.next();
+        assert_eq!(state.list_state.selected(), Some(0)); // Should stay at 0 or None? 
+        // According to code, it returns early if empty.
+        
+        state.previous();
+        assert_eq!(state.list_state.selected(), Some(0));
+    }
+
+    #[test]
+    fn test_reset_selection() {
+        let mut state = AppState::new();
+        state.list_state.select(Some(10));
+        state.reset_selection();
+        assert_eq!(state.list_state.selected(), Some(0));
+    }
+}

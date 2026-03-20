@@ -724,7 +724,7 @@ mod tests {
     fn test_history_capped_at_max() {
         let mut m = mode();
         for i in 0..MAX_HISTORY + 50 {
-            m.record_clip(&format!("clip-{}", i));
+            m.record_clip(&format!("clip-{i}"));
         }
         assert_eq!(m.history.len(), MAX_HISTORY);
     }
@@ -846,7 +846,7 @@ mod tests {
         let m = mode();
         let mut lines = Vec::new();
         for i in 0..30 {
-            lines.push(format!("Line {}", i));
+            lines.push(format!("Line {i}"));
         }
         let content = lines.join("\n");
         let item = Item {

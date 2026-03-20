@@ -39,3 +39,32 @@ pub fn resolve_icon_from_entry(desktop_path: &Path) -> Option<PathBuf> {
     let icon_name = entry.icon()?;
     resolve_desktop_icon_path(icon_name)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs::File;
+    use tempfile::tempdir;
+
+    #[test]
+    fn test_resolve_empty_icon() {
+        assert!(resolve_desktop_icon_path("").is_none());
+        assert!(resolve_desktop_icon_path("   ").is_none());
+    }
+
+    #[test]
+    fn test_resolve_absolute_existing_path() {
+        let dir = tempdir().unwrap();
+        let icon_path = dir.path().join("icon.png");
+        File::create(&icon_path).unwrap();
+
+        let resolved = resolve_desktop_icon_path(icon_path.to_str().unwrap());
+        assert_eq!(resolved.unwrap(), icon_path);
+    }
+
+    #[test]
+    fn test_resolve_absolute_missing_path() {
+        let resolved = resolve_desktop_icon_path("/tmp/latui_should_not_exist.png");
+        assert_eq!(resolved, None);
+    }
+}

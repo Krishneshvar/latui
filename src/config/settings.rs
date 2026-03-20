@@ -122,38 +122,30 @@ pub fn load_user_settings() -> AppConfig {
             // A truly robust implementation would use Option<T> and deep merge.
             
             // Re-parse the user config to identify what was actually there
-            if let Some(path) = load_user_settings_path() {
-                if let Ok(content) = std::fs::read_to_string(&path) {
-                    if let Ok(toml_value) = toml::from_str::<toml::Value>(&content) {
+            if let Some(path) = load_user_settings_path()
+                && let Ok(content) = std::fs::read_to_string(&path)
+                    && let Ok(toml_value) = toml::from_str::<toml::Value>(&content) {
                         let mut final_config = theme_cfg;
                         
                         // Merge logic: if a top-level table exists in user config, 
                         // we'll let it override the theme entirely for that section for now.
                         // Ideally we'd merge field-by-field.
                         
-                        if let Some(general) = toml_value.get("general") {
-                            if let Ok(c) = general.clone().try_into() { final_config.general = c; }
-                        }
-                        if let Some(layout) = toml_value.get("layout") {
-                          if let Ok(c) = layout.clone().try_into() { final_config.layout = c; }
-                        }
-                        if let Some(navbar) = toml_value.get("navbar") {
-                            if let Ok(c) = navbar.clone().try_into() { final_config.navbar = c; }
-                        }
-                        if let Some(search) = toml_value.get("search") {
-                            if let Ok(c) = search.clone().try_into() { final_config.search = c; }
-                        }
-                        if let Some(results) = toml_value.get("results") {
-                            if let Ok(c) = results.clone().try_into() { final_config.results = c; }
-                        }
-                        if let Some(modes) = toml_value.get("modes") {
-                            if let Ok(c) = modes.clone().try_into() { final_config.modes = c; }
-                        }
+                        if let Some(general) = toml_value.get("general")
+                            && let Ok(c) = general.clone().try_into() { final_config.general = c; }
+                        if let Some(layout) = toml_value.get("layout")
+                          && let Ok(c) = layout.clone().try_into() { final_config.layout = c; }
+                        if let Some(navbar) = toml_value.get("navbar")
+                            && let Ok(c) = navbar.clone().try_into() { final_config.navbar = c; }
+                        if let Some(search) = toml_value.get("search")
+                            && let Ok(c) = search.clone().try_into() { final_config.search = c; }
+                        if let Some(results) = toml_value.get("results")
+                            && let Ok(c) = results.clone().try_into() { final_config.results = c; }
+                        if let Some(modes) = toml_value.get("modes")
+                            && let Ok(c) = modes.clone().try_into() { final_config.modes = c; }
                         
                         return final_config;
                     }
-                }
-            }
             return theme_cfg;
         }
     }
@@ -164,25 +156,21 @@ pub fn load_user_settings() -> AppConfig {
 fn load_theme(name: &str) -> Option<AppConfig> {
     // 1. Try ~/.config/latui/themes/<name>.toml
     let xdg = BaseDirectories::with_prefix("latui");
-    if let Some(theme_path) = xdg.find_config_file(format!("themes/{}.toml", name)) {
-        if let Ok(content) = std::fs::read_to_string(&theme_path) {
-            if let Ok(cfg) = toml::from_str::<AppConfig>(&content) {
+    if let Some(theme_path) = xdg.find_config_file(format!("themes/{}.toml", name))
+        && let Ok(content) = std::fs::read_to_string(&theme_path)
+            && let Ok(cfg) = toml::from_str::<AppConfig>(&content) {
                 info!("Loaded theme '{}' from {}", name, theme_path.display());
                 return Some(cfg);
             }
-        }
-    }
 
     // 2. Try absolute path if name looks like a path
     let path = Path::new(name);
-    if path.is_absolute() && path.exists() {
-        if let Ok(content) = std::fs::read_to_string(path) {
-            if let Ok(cfg) = toml::from_str::<AppConfig>(&content) {
+    if path.is_absolute() && path.exists()
+        && let Ok(content) = std::fs::read_to_string(path)
+            && let Ok(cfg) = toml::from_str::<AppConfig>(&content) {
                 info!("Loaded theme from absolute path {}", path.display());
                 return Some(cfg);
             }
-        }
-    }
 
     // 3. Try bundled themes
     let bundled = match name {
@@ -191,12 +179,11 @@ fn load_theme(name: &str) -> Option<AppConfig> {
         _ => None,
     };
 
-    if let Some(content) = bundled {
-        if let Ok(cfg) = toml::from_str::<AppConfig>(content) {
+    if let Some(content) = bundled
+        && let Ok(cfg) = toml::from_str::<AppConfig>(content) {
             info!("Loaded bundled theme '{}'", name);
             return Some(cfg);
         }
-    }
 
     warn!("Theme '{}' not found", name);
     None

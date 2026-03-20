@@ -745,6 +745,12 @@ fn home_dir() -> PathBuf {
         .unwrap_or_else(|_| PathBuf::from("/"))
 }
 
+impl Default for FilesMode {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -925,11 +931,5 @@ mod tests {
         let decoded: FileMetadata = serde_json::from_str(&json).unwrap();
         assert_eq!(decoded.path, meta.path);
         assert_eq!(decoded.kind, FileKind::File);
-    }
-}
-
-impl Default for FilesMode {
-    fn default() -> Self {
-        Self::new()
     }
 }

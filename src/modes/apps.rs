@@ -1002,6 +1002,16 @@ fn pixel_active(r: u8, g: u8, b: u8, a: u8) -> bool {
     saturation > 15 || luminance < 205 || (a > 200 && luminance < 245)
 }
 
+impl Default for AppsMode {
+    fn default() -> Self {
+        Self::new(
+            None,
+            crate::config::keywords::KeywordMapper::new(),
+            AppsModeSettings::default(),
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1075,15 +1085,5 @@ mod tests {
         let resolver = AppIconResolver::new(&settings);
         let rendered = resolver.render(Some("firefox"), "Firefox").unwrap();
         assert!(rendered.starts_with('['));
-    }
-}
-
-impl Default for AppsMode {
-    fn default() -> Self {
-        Self::new(
-            None,
-            crate::config::keywords::KeywordMapper::new(),
-            AppsModeSettings::default(),
-        )
     }
 }

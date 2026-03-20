@@ -9,7 +9,7 @@ use serde::Deserialize;
 use std::process::Command;
 use std::time::Instant;
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 struct CustomItemDef {
     id: Option<String>,
     title: String,
@@ -18,6 +18,7 @@ struct CustomItemDef {
     metadata: Option<String>,
 }
 
+#[derive(Debug)]
 pub struct CustomMode {
     pub id: String,
     pub config: CustomModeConfig,

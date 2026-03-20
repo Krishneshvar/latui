@@ -80,8 +80,7 @@ pub fn draw(frame: &mut Frame, app: &mut AppState) {
         let is_apps_mode = app
             .mode_registry
             .get_active_mode()
-            .map(|mode| mode.name() == "apps")
-            .unwrap_or(false);
+            .is_some_and(|mode| mode.name() == "apps");
 
         if is_apps_mode && app.image_support.is_some() {
             render_apps_results_list_with_inline_icons(frame, app, results_area);
@@ -119,11 +118,10 @@ fn render_mode_tabs(frame: &mut Frame, app: &AppState, area: Rect) {
 /// Renders the search input box with the current query.
 fn render_search_input(frame: &mut Frame, app: &AppState, area: Rect) {
     let config = &app.config.search;
-    let mode_name = if let Some(mode) = app.mode_registry.get_active_mode() {
-        format!("{} {}", mode.icon(), mode.description())
-    } else {
-        "Search".to_string()
-    };
+    let mode_name = app.mode_registry.get_active_mode().map_or_else(
+        || "Search".to_string(),
+        |mode| format!("{} {}", mode.icon(), mode.description()),
+    );
 
     let prompt = &config.prompt_symbol;
     let input_text = format!("{}{}", prompt, app.query);
@@ -153,10 +151,10 @@ fn render_results_list(frame: &mut Frame, app: &mut AppState, area: Rect) {
         .map(|i| {
             let content = match &item_display {
                 ItemDisplay::Name => i.title.clone(),
-                ItemDisplay::NameDesc => match &i.description {
-                    Some(desc) => format!("{} - {}", i.title, desc),
-                    None => i.title.clone(),
-                },
+                ItemDisplay::NameDesc => i
+                    .description
+                    .as_ref()
+                    .map_or_else(|| i.title.clone(), |desc| format!("{} - {}", i.title, desc)),
                 ItemDisplay::IconName => match &i.icon {
                     Some(icon) if icon_visible => format!("{} {}", icon, i.title),
                     _ => i.title.clone(),
@@ -179,15 +177,15 @@ fn render_results_list(frame: &mut Frame, app: &mut AppState, area: Rect) {
 
     let block = style_resolver::resolve_block(&title, &config.border, &config.style);
 
-    let active_bg = config.selected.background.as_deref().unwrap_or_default();
-    let active_fg = config.selected.foreground.as_deref().unwrap_or_default();
+    let bg = config.selected.background.as_deref().unwrap_or_default();
+    let fg = config.selected.foreground.as_deref().unwrap_or_default();
 
     let list = List::new(items)
         .block(block)
         .highlight_style(
             Style::default()
-                .bg(style_resolver::parse_color(active_bg))
-                .fg(style_resolver::parse_color(active_fg))
+                .bg(style_resolver::parse_color(bg))
+                .fg(style_resolver::parse_color(fg))
                 .add_modifier(style_resolver::resolve_modifier(&config.selected.modifier)),
         )
         .highlight_symbol(if config.selected.symbol_visible {
@@ -248,12 +246,12 @@ fn render_apps_results_list_with_inline_icons(frame: &mut Frame, app: &mut AppSt
     // Cache config values to avoid multiple borrows
     let (highlight_style, normal_style, symbol, symbol_visible, item_display, icon_visible, fallback_icon) = {
         let config = &app.config.results;
-        let active_bg = config.selected.background.as_deref().unwrap_or_default();
-        let active_fg = config.selected.foreground.as_deref().unwrap_or_default();
+        let bg = config.selected.background.as_deref().unwrap_or_default();
+        let fg = config.selected.foreground.as_deref().unwrap_or_default();
         
         let highlight = Style::default()
-            .bg(style_resolver::parse_color(active_bg))
-            .fg(style_resolver::parse_color(active_fg))
+            .bg(style_resolver::parse_color(bg))
+            .fg(style_resolver::parse_color(fg))
             .add_modifier(style_resolver::resolve_modifier(&config.selected.modifier));
         
         (
@@ -409,12 +407,12 @@ fn render_inline_icon_image(
             }
         }
 
-    if let Some(protocol) = app.icon_preview_protocols.get_mut(&cache_key) {
-        frame.render_stateful_widget(StatefulImage::default(), icon_rect, protocol);
-        true
-    } else {
-        false
-    }
+    app.icon_preview_protocols
+        .get_mut(&cache_key)
+        .is_some_and(|protocol| {
+            frame.render_stateful_widget(StatefulImage::default(), icon_rect, protocol);
+            true
+        })
 }
 
 fn resolve_desktop_icon_path(app: &mut AppState, item: &Item) -> Option<PathBuf> {

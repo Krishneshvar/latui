@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 
 /// A searchable item with multiple indexed fields
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchableItem {
     /// The original item
     pub item: Item,
@@ -15,7 +15,7 @@ pub struct SearchableItem {
     pub acronyms: Vec<String>,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IndexedField {
     pub name: String,
     pub text: String,

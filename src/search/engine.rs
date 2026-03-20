@@ -5,6 +5,7 @@ use crate::search::typo::TypoTolerance;
 use rayon::prelude::*;
 use nucleo_matcher::{Matcher, Config, Utf32Str, pattern::{Pattern, CaseMatching, Normalization}};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SearchEngine {
     tokenizer: Tokenizer,
     typo_tolerance: TypoTolerance,

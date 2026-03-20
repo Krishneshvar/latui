@@ -101,6 +101,7 @@ struct RecentEntry {
 // ─── FilesMode ────────────────────────────────────────────────────────────────
 
 /// Files mode — fuzzy-searchable filesystem navigator.
+#[derive(Debug)]
 pub struct FilesMode {
     /// Recent files/dirs opened through LaTUI (most recent first).
     recents: VecDeque<RecentEntry>,

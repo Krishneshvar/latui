@@ -2,6 +2,7 @@ use std::process::Command;
 use crate::error::LatuiError;
 
 /// Centralized engine for executing various types of commands.
+#[derive(Debug, Clone, Copy, Default)]
 pub struct ExecutionEngine;
 
 impl ExecutionEngine {

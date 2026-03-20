@@ -2,6 +2,7 @@ use unicode_segmentation::UnicodeSegmentation;
 
 /// Advanced tokenizer for extracting searchable tokens from text
 /// Handles: whitespace, punctuation, CamelCase, acronyms, unicode
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Tokenizer {
     /// Whether to extract acronyms from multi-word text
     pub extract_acronyms: bool,
@@ -12,7 +13,7 @@ pub struct Tokenizer {
 }
 
 impl Tokenizer {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             extract_acronyms: true,
             split_camel_case: true,
@@ -67,9 +68,9 @@ impl Tokenizer {
 
     /// Split CamelCase words into separate tokens
     /// Examples:
-    /// - "LibreOffice" -> ["Libre", "Office"]
-    /// - "VLCPlayer" -> ["VLC", "Player"]
-    /// - "GIMP" -> ["GIMP"] (all caps, no split)
+    /// - "LibreOffice" -> [`Libre`, `Office`]
+    /// - "VLCPlayer" -> [`VLC`, `Player`]
+    /// - "GIMP" -> [`GIMP`] (all caps, no split)
     pub fn split_camel_case_word(&self, word: &str) -> Vec<String> {
         let chars: Vec<char> = word.chars().collect();
         if chars.len() < 2 {
@@ -121,7 +122,7 @@ impl Tokenizer {
         // Filter out very short tokens (single letters) unless they're meaningful
         tokens
             .into_iter()
-            .filter(|t| t.len() > 1 || t.chars().all(|c| c.is_uppercase()))
+            .filter(|t| t.len() > 1 || t.chars().all(char::is_uppercase))
             .collect()
     }
 
@@ -157,7 +158,7 @@ impl Tokenizer {
     }
 
     /// Extract all possible acronyms from text
-    /// For "Visual Studio Code" returns: ["vsc", "vs", "vc", "sc"]
+    /// For "Visual Studio Code" returns: [`vsc`, `vs`, `vc`, `sc`]
     pub fn extract_all_acronyms(&self, text: &str) -> Vec<String> {
         let words: Vec<&str> = text
             .split(|c: char| c.is_whitespace() || c == '-' || c == '_')

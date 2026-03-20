@@ -17,6 +17,7 @@ use std::path::{Path, PathBuf};
 
 
 /// Apps launcher mode backed by freedesktop desktop entries.
+#[derive(Debug)]
 pub struct AppsMode {
     items: Vec<SearchableItem>,
     trie: Option<MultiTokenTrie>,
@@ -27,6 +28,16 @@ pub struct AppsMode {
     settings: AppsModeSettings,
     current_desktop_envs: Vec<String>,
     icon_resolver: Option<AppIconResolver>,
+}
+
+#[derive(Debug, Clone)]
+struct AppIconResolver {
+    theme: String,
+    size: u16,
+    scale: u16,
+    prefer_svg: bool,
+    fallback: String,
+    render_mode: AppsIconRenderMode,
 }
 
 impl AppsMode {
@@ -606,16 +617,6 @@ struct AppsCacheKeyMaterial {
     icons_fallback: String,
     icons_include: Vec<String>,
     icons_exclude: Vec<String>,
-}
-
-#[derive(Clone)]
-struct AppIconResolver {
-    theme: String,
-    size: u16,
-    scale: u16,
-    prefer_svg: bool,
-    fallback: String,
-    render_mode: AppsIconRenderMode,
 }
 
 impl AppIconResolver {

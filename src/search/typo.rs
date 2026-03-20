@@ -2,6 +2,7 @@
 
 /// Advanced typo tolerance using multiple edit distance algorithms
 /// Handles common typing mistakes: transpositions, insertions, deletions, substitutions
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TypoTolerance {
     /// Maximum edit distance to consider (default: 2)
     pub max_distance: usize,
@@ -12,7 +13,7 @@ pub struct TypoTolerance {
 }
 
 impl TypoTolerance {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             max_distance: 2,
             min_query_length: 4,
@@ -44,11 +45,7 @@ impl TypoTolerance {
             curr_row[0] = i;
 
             for j in 1..=len2 {
-                let cost = if s1_chars[i - 1] == s2_chars[j - 1] {
-                    0
-                } else {
-                    1
-                };
+                let cost = usize::from(s1_chars[i - 1] != s2_chars[j - 1]);
 
                 curr_row[j] = (prev_row[j] + 1) // deletion
                     .min(curr_row[j - 1] + 1) // insertion
@@ -89,11 +86,7 @@ impl TypoTolerance {
 
         for i in 1..=len1 {
             for j in 1..=len2 {
-                let cost = if s1_chars[i - 1] == s2_chars[j - 1] {
-                    0
-                } else {
-                    1
-                };
+                let cost = usize::from(s1_chars[i - 1] != s2_chars[j - 1]);
 
                 matrix[i][j] = (matrix[i - 1][j] + 1) // deletion
                     .min(matrix[i][j - 1] + 1) // insertion
@@ -134,7 +127,7 @@ impl TypoTolerance {
         }
 
         // Skip if target is much longer (unlikely to be a typo)
-        let len_diff = (query.len() as i32 - target.len() as i32).unsigned_abs() as usize;
+        let len_diff = query.len().abs_diff(target.len());
         if len_diff > self.max_distance {
             return None;
         }

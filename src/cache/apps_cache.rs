@@ -7,7 +7,7 @@ use crate::core::searchable_item::SearchableItem;
 
 pub const APPS_CACHE_SCHEMA_VERSION: u32 = 3;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct CachedApps {
     #[serde(default = "default_schema_version")]
     pub schema_version: u32,

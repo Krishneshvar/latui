@@ -18,6 +18,12 @@ pub struct Database {
     conn: Connection,
 }
 
+impl std::fmt::Debug for Database {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Database").finish_non_exhaustive()
+    }
+}
+
 impl Database {
     /// Create or open database at the specified path
     pub fn new(path: &Path) -> Result<Self, DatabaseError> {

@@ -25,6 +25,12 @@ pub enum LatuiError {
         source: std::io::Error,
     },
 
+    #[error("Terminal drawing error: {0}")]
+    Draw(String),
+
+    #[error("Terminal event error: {0}")]
+    Event(String),
+
     // ── Targeted string errors (only where no structured type fits) ───────
 
     /// XDG base-directory resolution failed. Stores the underlying message

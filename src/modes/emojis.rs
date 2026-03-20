@@ -1884,7 +1884,7 @@ static EMOJIS: &[EmojiRow] = &[
 
 // ── Recent entry ───────────────────────────────────────────────────────────
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct RecentEmoji {
     glyph: String,
     use_count: u32,
@@ -1928,6 +1928,7 @@ fn cmd_exists(name: &str) -> bool {
 
 // ── EmojisMode ─────────────────────────────────────────────────────────────
 
+#[derive(Debug)]
 pub struct EmojisMode {
     /// Searchable index over the static database.
     searchable: Vec<SearchableItem>,

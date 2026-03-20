@@ -106,6 +106,7 @@ impl ClipBackend {
 // ─── ClipboardMode ────────────────────────────────────────────────────────────
 
 /// Clipboard mode — fuzzy-searchable clipboard history with paste support.
+#[derive(Debug)]
 pub struct ClipboardMode {
     /// Clipboard history (most recently used first).
     history: VecDeque<ClipEntry>,

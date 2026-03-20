@@ -15,6 +15,17 @@ pub struct ModeRegistry {
     mode_order: Vec<String>,
 }
 
+impl std::fmt::Debug for ModeRegistry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ModeRegistry")
+            .field("modes_count", &self.modes.len())
+            .field("active_mode", &self.active_mode)
+            .field("default_mode", &self.default_mode)
+            .field("mode_order", &self.mode_order)
+            .finish_non_exhaustive()
+    }
+}
+
 impl ModeRegistry {
     /// Creates a new empty ModeRegistry.
     pub fn new() -> Self {

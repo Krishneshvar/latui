@@ -25,6 +25,7 @@ struct HistoryEntry {
 }
 
 /// Run mode for executing shell commands with intelligent history tracking
+#[derive(Debug)]
 pub struct RunMode {
     /// Command history (most recent first)
     history: VecDeque<HistoryEntry>,

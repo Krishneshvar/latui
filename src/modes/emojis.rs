@@ -2463,13 +2463,11 @@ mod tests {
     fn test_static_db_no_empty_entries() {
         for (glyph, name, keywords, category) in EMOJIS {
             assert!(!glyph.is_empty(), "Empty glyph found");
-            assert!(!name.is_empty(), "Empty name for: {}", glyph);
-            assert!(!keywords.is_empty(), "No keywords for: {} {}", glyph, name);
+            assert!(!name.is_empty(), "Empty name for: {glyph}");
+            assert!(!keywords.is_empty(), "No keywords for: {glyph} {name}");
             assert!(
                 !category.is_empty(),
-                "Empty category for: {} {}",
-                glyph,
-                name
+                "Empty category for: {glyph} {name}"
             );
         }
     }

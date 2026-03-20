@@ -27,7 +27,13 @@ fn test_excessively_long_query() {
 #[test]
 fn test_rapid_mode_switching() {
     let mut app = AppState::new();
-    let initial_mode = app.mode_registry.active_mode.clone();
+    
+    use latui::modes::run::RunMode;
+    use latui::modes::files::FilesMode;
+    app.mode_registry.register("run", Box::new(RunMode::new()));
+    app.mode_registry.register("files", Box::new(FilesMode::new()));
+
+    let _initial_mode = app.mode_registry.active_mode.clone();
 
     // Spam tab 100 times
     for _ in 0..100 {

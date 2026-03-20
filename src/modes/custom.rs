@@ -217,7 +217,7 @@ mod tests {
             icon: "X".into(),
             description: "Test".into(),
             list_cmd: "echo '[{\"id\":\"foo\", \"title\":\"Bar\"}]'".into(),
-            exec_cmd: "".into(),
+            exec_cmd: String::new(),
             stays_open: false,
         };
         let mut mode = CustomMode::new("test".into(), config);
@@ -235,7 +235,7 @@ mod tests {
             icon: "X".into(),
             description: "Test".into(),
             list_cmd: "echo 'Line 1\nLine 2'".into(),
-            exec_cmd: "".into(),
+            exec_cmd: String::new(),
             stays_open: false,
         };
         let mut mode = CustomMode::new("test".into(), config);

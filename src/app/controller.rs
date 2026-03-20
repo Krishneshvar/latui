@@ -27,11 +27,9 @@ pub fn run<B: Backend>(
         if matches!(event::poll(Duration::from_millis(100)), Ok(true))
             && let Event::Key(key) =
                 event::read().map_err(|e| LatuiError::Event(e.to_string()))?
-        {
-            if !handle_key_event(app, key)? {
+            && !handle_key_event(app, key)? {
                 return Ok(());
             }
-        }
     }
 }
 
@@ -211,7 +209,7 @@ mod tests {
     #[test]
     fn test_controller_tab_switching() {
         let mut app = AppState::new();
-        let initial_mode = app.mode_registry.active_mode.clone();
+        let _initial_mode = app.mode_registry.active_mode.clone();
 
         // This might not change if only one mode relies on defaults, but if there are multiple, it should.
         // Just calling it verifies it won't crash.

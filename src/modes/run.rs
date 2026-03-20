@@ -484,7 +484,7 @@ mod tests {
         let mut mode = RunMode::new();
 
         for i in 0..MAX_HISTORY_SIZE + 10 {
-            mode.add_to_history(&format!("command_{}", i));
+            mode.add_to_history(&format!("command_{i}"));
         }
 
         assert_eq!(mode.history.len(), MAX_HISTORY_SIZE);
@@ -492,7 +492,7 @@ mod tests {
 
     #[test]
     fn test_validate_command() {
-        let mode = RunMode::new();
+        let _mode = RunMode::new();
 
         assert!(RunMode::validate_command("ls -la").is_ok());
         assert!(RunMode::validate_command("").is_err());

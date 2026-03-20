@@ -33,6 +33,19 @@ pub fn merge_toml(base: &mut toml::Value, overrides: toml::Value) {
     }
 }
 
+/// Sends a desktop notification if notify-send is available.
+/// Used for graceful error reporting when the TUI is closed or as a popup.
+pub fn notify_error(title: &str, message: &str) {
+    let _ = std::process::Command::new("notify-send")
+        .arg("-a")
+        .arg("LaTUI")
+        .arg("-i")
+        .arg("dialog-error")
+        .arg(title)
+        .arg(message)
+        .spawn();
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -76,17 +89,4 @@ mod tests {
         let ts = current_timestamp();
         assert!(ts > 1_700_000_000); // Sanity check
     }
-}
-
-/// Sends a desktop notification if notify-send is available.
-/// Used for graceful error reporting when the TUI is closed or as a popup.
-pub fn notify_error(title: &str, message: &str) {
-    let _ = std::process::Command::new("notify-send")
-        .arg("-a")
-        .arg("LaTUI")
-        .arg("-i")
-        .arg("dialog-error")
-        .arg(title)
-        .arg(message)
-        .spawn();
 }

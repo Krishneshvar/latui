@@ -1,6 +1,4 @@
-use lru::LruCache;
-use std::cell::{Cell, RefCell};
-use std::num::NonZeroUsize;
+
 
 /// Advanced typo tolerance using multiple edit distance algorithms
 /// Handles common typing mistakes: transpositions, insertions, deletions, substitutions
@@ -11,10 +9,6 @@ pub struct TypoTolerance {
     pub min_query_length: usize,
     /// Whether to use Damerau-Levenshtein (includes transpositions)
     pub use_damerau: bool,
-    /// Cache for distance calculations (LRU bounded)
-    cache: RefCell<LruCache<(String, String), usize>>,
-    hits: Cell<usize>,
-    misses: Cell<usize>,
 }
 
 impl TypoTolerance {
@@ -23,9 +17,6 @@ impl TypoTolerance {
             max_distance: 2,
             min_query_length: 4,
             use_damerau: true,
-            cache: RefCell::new(LruCache::new(NonZeroUsize::new(1000).unwrap())),
-            hits: Cell::new(0),
-            misses: Cell::new(0),
         }
     }
 
@@ -127,27 +118,14 @@ impl TypoTolerance {
     /// based on Rust's `chars()` (Unicode scalar values), which may treat some single
     /// graphemes as multiple characters if they contain combining marks.
     pub fn distance(&self, s1: &str, s2: &str) -> usize {
-        // Check cache first
-        let key = (s1.to_string(), s2.to_string());
-        if let Some(&dist) = self.cache.borrow_mut().get(&key) {
-            self.hits.set(self.hits.get() + 1);
-            return dist;
-        }
-
-        self.misses.set(self.misses.get() + 1);
-
-        let distance = if self.use_damerau {
+        if self.use_damerau {
             self.damerau_levenshtein_distance(s1, s2)
         } else {
             self.levenshtein_distance(s1, s2)
-        };
-
-        // Cache the result
-        self.cache.borrow_mut().put(key, distance);
-        distance
+        }
     }
-
-    /// Score based on typo tolerance
+    
+    // ...
     /// Returns None if query is too short or distance is too large
     pub fn score(&self, query: &str, target: &str) -> Option<f64> {
         // Skip if query is too short

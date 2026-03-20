@@ -385,29 +385,29 @@ fn render_inline_icon_image(
 
     let cache_key = icon_path.to_string_lossy().to_string();
 
-    if !app.icon_preview_protocols.contains_key(&cache_key)
-        && !app.failed_icon_paths.contains(&cache_key)
-    {
-        let picker = app
-            .image_support
-            .as_ref()
-            .map(|support| support.picker.clone());
-        if let Some(picker) = picker {
-            match image::ImageReader::open(&icon_path)
-                .ok()
-                .and_then(|r| r.with_guessed_format().ok())
-                .and_then(|r| r.decode().ok())
-            {
-                Some(decoded) => {
-                    app.icon_preview_protocols
-                        .insert(cache_key.clone(), picker.new_resize_protocol(decoded));
-                }
-                None => {
-                    app.failed_icon_paths.insert(cache_key.clone());
+        if !app.icon_preview_protocols.contains(&cache_key)
+            && !app.failed_icon_paths.contains(&cache_key)
+        {
+            let picker = app
+                .image_support
+                .as_ref()
+                .map(|support| support.picker.clone());
+            if let Some(picker) = picker {
+                match image::ImageReader::open(&icon_path)
+                    .ok()
+                    .and_then(|r| r.with_guessed_format().ok())
+                    .and_then(|r| r.decode().ok())
+                {
+                    Some(decoded) => {
+                        app.icon_preview_protocols
+                            .put(cache_key.clone(), picker.new_resize_protocol(decoded));
+                    }
+                    None => {
+                        app.failed_icon_paths.insert(cache_key.clone());
+                    }
                 }
             }
         }
-    }
 
     if let Some(protocol) = app.icon_preview_protocols.get_mut(&cache_key) {
         frame.render_stateful_widget(StatefulImage::default(), icon_rect, protocol);
@@ -425,6 +425,6 @@ fn resolve_desktop_icon_path(app: &mut AppState, item: &Item) -> Option<PathBuf>
     let desktop_path = std::path::Path::new(&item.id);
     let resolved = icons::resolve_icon_from_entry(&desktop_path);
     app.desktop_icon_path_cache
-        .insert(item.id.clone(), resolved.clone());
+        .put(item.id.clone(), resolved.clone());
     resolved
 }

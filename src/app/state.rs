@@ -4,8 +4,10 @@ use crate::config::theme::AppConfig;
 use ratatui::widgets::ListState;
 use ratatui_image::picker::{Picker, ProtocolType};
 use ratatui_image::protocol::StatefulProtocol;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::path::PathBuf;
+use lru::LruCache;
+use std::num::NonZeroUsize;
 
 pub struct ImageSupport {
     pub picker: Picker,
@@ -21,8 +23,8 @@ pub struct AppState {
     pub show_preview: bool,
     pub config: AppConfig,
     pub image_support: Option<ImageSupport>,
-    pub icon_preview_protocols: HashMap<String, StatefulProtocol>,
-    pub desktop_icon_path_cache: HashMap<String, Option<PathBuf>>,
+    pub icon_preview_protocols: LruCache<String, StatefulProtocol>,
+    pub desktop_icon_path_cache: LruCache<String, Option<PathBuf>>,
     pub failed_icon_paths: HashSet<String>,
 }
 
@@ -40,8 +42,8 @@ impl AppState {
             show_preview: false,
             config: AppConfig::default(),
             image_support: None,
-            icon_preview_protocols: HashMap::new(),
-            desktop_icon_path_cache: HashMap::new(),
+            icon_preview_protocols: LruCache::new(NonZeroUsize::new(100).unwrap()),
+            desktop_icon_path_cache: LruCache::new(NonZeroUsize::new(500).unwrap()),
             failed_icon_paths: HashSet::new(),
         }
     }

@@ -864,6 +864,7 @@ dependencies = [
  "nucleo-matcher",
  "ratatui",
  "ratatui-image",
+ "rayon",
  "rusqlite",
  "rustc-hash",
  "serde",

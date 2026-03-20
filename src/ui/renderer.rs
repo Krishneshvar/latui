@@ -254,7 +254,7 @@ fn render_apps_results_list_with_inline_icons(frame: &mut Frame, app: &mut AppSt
     *app.list_state.offset_mut() = offset;
 
     // Cache config values to avoid multiple borrows
-    let (highlight_style, normal_style, symbol, symbol_visible, item_display, fallback_icon) = {
+    let (highlight_style, normal_style, symbol, symbol_visible, item_display, icon_visible, fallback_icon) = {
         let config = &app.config.results;
         let active_bg = config.selected.background.as_deref().unwrap_or_default();
         let active_fg = config.selected.foreground.as_deref().unwrap_or_default();
@@ -270,6 +270,7 @@ fn render_apps_results_list_with_inline_icons(frame: &mut Frame, app: &mut AppSt
             config.selected.symbol.clone(),
             config.selected.symbol_visible,
             config.item_display.clone(),
+            config.icon_visible,
             app.config.modes.apps.icons.fallback.clone(),
         )
     };
@@ -279,7 +280,12 @@ fn render_apps_results_list_with_inline_icons(frame: &mut Frame, app: &mut AppSt
     } else {
         0
     };
-    let icon_width: u16 = 4;
+    
+    let icon_width: u16 = if icon_visible && matches!(item_display, ItemDisplay::IconName | ItemDisplay::IconNameDesc) {
+        4
+    } else {
+        0
+    };
 
     for row in 0..inner.height {
         let index = offset + row as usize;
@@ -337,9 +343,9 @@ fn render_apps_results_list_with_inline_icons(frame: &mut Frame, app: &mut AppSt
             }
 
             if text_rect.width > 0 {
-                let text = match item_display {
-                    ItemDisplay::Name => item.title.clone(),
-                    _ => match &item.description {
+                let text = match &item_display {
+                    ItemDisplay::Name | ItemDisplay::IconName => item.title.clone(),
+                    ItemDisplay::NameDesc | ItemDisplay::IconNameDesc => match &item.description {
                         Some(desc) => format!("{} - {}", item.title, desc),
                         None => item.title.clone(),
                     },

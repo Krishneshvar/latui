@@ -47,7 +47,10 @@ impl AppState {
     }
 
     pub fn detect_image_support(&mut self) {
-        let picker = Picker::from_query_stdio().unwrap_or_else(|_| Picker::halfblocks());
+        let picker = Picker::from_query_stdio().unwrap_or_else(|e| {
+            tracing::debug!("Image picker initialization failed: {}; using halfblocks", e);
+            Picker::halfblocks()
+        });
         let protocol = picker.protocol_type();
         match protocol {
             ProtocolType::Kitty | ProtocolType::Sixel => {

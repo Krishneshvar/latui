@@ -85,7 +85,7 @@ impl RunMode {
         let xdg = BaseDirectories::with_prefix("latui");
         let history_path = xdg
             .place_data_file("run_history.json")
-            .map_err(|e| LatuiError::Io(std::io::Error::other(e)))?;
+            .map_err(|e| LatuiError::Xdg(e.to_string()))?;
 
         self.history_path = Some(history_path.clone());
 
@@ -174,10 +174,11 @@ impl RunMode {
         // Check if command already exists in history
         if let Some(pos) = self.history.iter().position(|e| e.command == command) {
             // Move to front and increment count
-            let mut entry = self.history.remove(pos).unwrap();
-            entry.execution_count += 1;
-            entry.timestamp = now;
-            self.history.push_front(entry);
+            if let Some(mut entry) = self.history.remove(pos) {
+                entry.execution_count += 1;
+                entry.timestamp = now;
+                self.history.push_front(entry);
+            }
         } else {
             // Add new entry
             let entry = HistoryEntry {

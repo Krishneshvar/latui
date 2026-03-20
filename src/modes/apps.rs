@@ -329,7 +329,10 @@ impl AppsMode {
             icons_exclude: self.settings.icons.exclude.clone(),
         };
 
-        let serialized = serde_json::to_string(&material).unwrap_or_default();
+        let serialized = serde_json::to_string(&material).unwrap_or_else(|e| {
+            tracing::error!("Failed to serialize cache key material: {}", e);
+            "error-fallback".to_string()
+        });
         let mut hasher = DefaultHasher::new();
         serialized.hash(&mut hasher);
         format!("{:016x}", hasher.finish())

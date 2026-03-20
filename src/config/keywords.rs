@@ -1,14 +1,16 @@
 use std::collections::HashMap;
+use serde::Deserialize;
+use crate::error::{LatuiError, ConfigError};
 
 /// Manages semantic keyword mappings (e.g., "browser" -> ["firefox", "chrome"])
+#[derive(Debug, Default)]
 pub struct KeywordMapper {
     mappings: HashMap<String, Vec<String>>,
 }
 
-impl Default for KeywordMapper {
-    fn default() -> Self {
-        Self::new()
-    }
+#[derive(Deserialize)]
+struct KeywordConfig {
+    keywords: HashMap<String, Vec<String>>,
 }
 
 impl KeywordMapper {
@@ -20,50 +22,11 @@ impl KeywordMapper {
 
     /// Load default keywords from embedded TOML
     pub fn with_defaults() -> Self {
-        let mut mapper = Self::new();
-        mapper.add_mapping(
-            "browser".to_string(),
-            vec![
-                "firefox".to_string(),
-                "chrome".to_string(),
-                "brave".to_string(),
-                "chromium".to_string(),
-                "opera".to_string(),
-            ],
-        );
-        mapper.add_mapping(
-            "editor".to_string(),
-            vec![
-                "nvim".to_string(),
-                "code".to_string(),
-                "vscode".to_string(),
-                "sublime".to_string(),
-                "emacs".to_string(),
-                "vim".to_string(),
-            ],
-        );
-        mapper.add_mapping(
-            "terminal".to_string(),
-            vec![
-                "kitty".to_string(),
-                "alacritty".to_string(),
-                "foot".to_string(),
-                "gnome-terminal".to_string(),
-                "konsole".to_string(),
-                "wezterm".to_string(),
-            ],
-        );
-        mapper.add_mapping(
-            "file".to_string(),
-            vec![
-                "thunar".to_string(),
-                "nautilus".to_string(),
-                "dolphin".to_string(),
-                "ranger".to_string(),
-                "nnn".to_string(),
-            ],
-        );
-        mapper
+        let content = include_str!("keywords.toml");
+        Self::from_toml(content).unwrap_or_else(|e| {
+            tracing::error!("Failed to load bundled keywords: {}", e);
+            Self::new()
+        })
     }
 
     /// Get all apps matching a keyword
@@ -77,10 +40,12 @@ impl KeywordMapper {
     }
 
     /// Load from a TOML string
-    pub fn from_toml(content: &str) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn from_toml(content: &str) -> Result<Self, LatuiError> {
         let mut mapper = Self::new();
-        let parsed: HashMap<String, Vec<String>> = toml::from_str(content)?;
-        for (k, v) in parsed {
+        let parsed: KeywordConfig = toml::from_str(content)
+            .map_err(|e| LatuiError::Config(ConfigError::Keywords(e)))?;
+            
+        for (k, v) in parsed.keywords {
             mapper.add_mapping(k, v);
         }
         Ok(mapper)

@@ -1,6 +1,6 @@
 use rusqlite::Connection;
 use std::path::Path;
-use std::time::{SystemTime, UNIX_EPOCH};
+use crate::core::utils::current_timestamp;
 use tracing::{debug, info, instrument, trace};
 
 #[derive(Debug, thiserror::Error)]
@@ -199,7 +199,7 @@ impl Database {
             Ok((row.get::<_, String>(0)?, row.get::<_, u32>(1)?))
         })?;
 
-        let mut results = Vec::new();
+        let mut results: Vec<(String, u32)> = Vec::new();
         for row in rows {
             results.push(row?);
         }
@@ -239,10 +239,5 @@ pub struct UsageStats {
     pub last_used: u64,
 }
 
-/// Get current Unix timestamp
-fn current_timestamp() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
-}
+
+

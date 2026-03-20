@@ -10,8 +10,7 @@ use std::fs;
 
 use tracing::{Level, debug, error, info};
 use tracing_appender::rolling;
-use xdg::BaseDirectories;
-
+use latui::core::utils::latui_xdg;
 use std::io;
 
 use crossterm::{
@@ -22,7 +21,7 @@ use crossterm::{
 use ratatui::{Terminal, backend::CrosstermBackend};
 
 fn init_tracing() -> anyhow::Result<tracing_appender::non_blocking::WorkerGuard> {
-    let xdg = BaseDirectories::with_prefix("latui");
+    let xdg = latui_xdg();
     let log_dir = xdg.place_state_file("logs")?;
     let file_appender = rolling::daily(
         log_dir.parent().unwrap_or(std::path::Path::new("/tmp")),
@@ -46,7 +45,7 @@ fn secure_permissions(path: &std::path::Path) {
 }
 
 fn main() -> anyhow::Result<()> {
-    let xdg = BaseDirectories::with_prefix("latui");
+    let xdg = latui_xdg();
 
     // Ensure core directories exist and are secure
     if let Ok(data_dir) = xdg.create_data_directory("") {
@@ -94,7 +93,7 @@ fn run_app() -> anyhow::Result<()> {
     app.detect_image_support();
 
     // Initialize common components
-    let xdg = BaseDirectories::with_prefix("latui");
+    let xdg = latui_xdg();
     let frequency_tracker = match xdg.place_data_file("usage.db") {
         Ok(db_path) => match FrequencyTracker::new(&db_path) {
             Ok(mut tracker) => {

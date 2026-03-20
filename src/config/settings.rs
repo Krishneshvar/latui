@@ -1,9 +1,9 @@
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use tracing::{warn, info};
-use xdg::BaseDirectories;
 use crate::config::theme::AppConfig;
 use crate::ui::bundled_themes;
+use crate::core::utils::latui_xdg;
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct ModesSettings {
@@ -97,7 +97,7 @@ impl Default for AppsIconSettings {
 }
 
 pub fn load_user_settings_path() -> Option<PathBuf> {
-    let xdg = BaseDirectories::with_prefix("latui");
+    let xdg = latui_xdg();
     xdg.find_config_file("config.toml")
 }
 
@@ -106,21 +106,20 @@ pub fn load_user_settings() -> AppConfig {
     let mut config = AppConfig::default();
 
     // 1. Try to load user's config.toml
-    if let Some(path) = load_user_settings_path() {
-        match std::fs::read_to_string(&path) {
-            Ok(content) => {
-                match toml::from_str::<AppConfig>(&content) {
-                    Ok(user_cfg) => {
-                        config = user_cfg;
-                        info!("Loaded user configuration from {}", path.display());
-                    }
-                    Err(e) => {
-                        warn!("Failed to parse config file {}: {}. Using defaults.", path.display(), e);
-                    }
-                }
+    let raw_toml = load_user_settings_path().and_then(|path| {
+        std::fs::read_to_string(&path)
+            .map_err(|e| warn!("Failed to read config file {}: {}", path.display(), e))
+            .ok()
+    });
+
+    if let Some(ref content) = raw_toml {
+        match toml::from_str::<AppConfig>(content) {
+            Ok(user_cfg) => {
+                config = user_cfg;
+                info!("Loaded user configuration");
             }
             Err(e) => {
-                warn!("Failed to read config file {}: {}. Using defaults.", path.display(), e);
+                warn!("Failed to parse config file: {}. Using defaults.", e);
             }
         }
     }
@@ -129,36 +128,27 @@ pub fn load_user_settings() -> AppConfig {
     if config.general.theme != "inline" {
         let theme_name = config.general.theme.clone();
         if let Some(theme_cfg) = load_theme(&theme_name) {
-            // Apply theme as base, then re-apply user overrides
-            // For now, we'll just do a simple replacement of theme-related blocks
-            // if they weren't explicitly provided in the user config.
-            // A truly robust implementation would use Option<T> and deep merge.
-            
             // Re-parse the user config to identify what was actually there
-            if let Some(path) = load_user_settings_path()
-                && let Ok(content) = std::fs::read_to_string(&path)
-                    && let Ok(toml_value) = toml::from_str::<toml::Value>(&content) {
-                        let mut final_config = theme_cfg;
-                        
-                        // Merge logic: if a top-level table exists in user config, 
-                        // we'll let it override the theme entirely for that section for now.
-                        // Ideally we'd merge field-by-field.
-                        
-                        if let Some(general) = toml_value.get("general")
-                            && let Ok(c) = general.clone().try_into() { final_config.general = c; }
-                        if let Some(layout) = toml_value.get("layout")
-                          && let Ok(c) = layout.clone().try_into() { final_config.layout = c; }
-                        if let Some(navbar) = toml_value.get("navbar")
-                            && let Ok(c) = navbar.clone().try_into() { final_config.navbar = c; }
-                        if let Some(search) = toml_value.get("search")
-                            && let Ok(c) = search.clone().try_into() { final_config.search = c; }
-                        if let Some(results) = toml_value.get("results")
-                            && let Ok(c) = results.clone().try_into() { final_config.results = c; }
-                        if let Some(modes) = toml_value.get("modes")
-                            && let Ok(c) = modes.clone().try_into() { final_config.modes = c; }
-                        
-                        return final_config;
-                    }
+            // Reuse the content we already read
+            if let Some(content) = raw_toml
+                && let Ok(toml_value) = toml::from_str::<toml::Value>(&content) {
+                    let mut final_config = theme_cfg;
+                    
+                    if let Some(general) = toml_value.get("general")
+                        && let Ok(c) = general.clone().try_into() { final_config.general = c; }
+                    if let Some(layout) = toml_value.get("layout")
+                      && let Ok(c) = layout.clone().try_into() { final_config.layout = c; }
+                    if let Some(navbar) = toml_value.get("navbar")
+                        && let Ok(c) = navbar.clone().try_into() { final_config.navbar = c; }
+                    if let Some(search) = toml_value.get("search")
+                        && let Ok(c) = search.clone().try_into() { final_config.search = c; }
+                    if let Some(results) = toml_value.get("results")
+                        && let Ok(c) = results.clone().try_into() { final_config.results = c; }
+                    if let Some(modes) = toml_value.get("modes")
+                        && let Ok(c) = modes.clone().try_into() { final_config.modes = c; }
+                    
+                    return final_config;
+                }
             return theme_cfg;
         }
     }
@@ -168,7 +158,7 @@ pub fn load_user_settings() -> AppConfig {
 
 fn load_theme(name: &str) -> Option<AppConfig> {
     // 1. Try ~/.config/latui/themes/<name>.toml
-    let xdg = BaseDirectories::with_prefix("latui");
+    let xdg = latui_xdg();
     if let Some(theme_path) = xdg.find_config_file(format!("themes/{}.toml", name))
         && let Ok(content) = std::fs::read_to_string(&theme_path)
             && let Ok(cfg) = toml::from_str::<AppConfig>(&content) {
@@ -219,14 +209,16 @@ fn default_icon_fallback() -> String {
 }
 
 fn default_desktop_dirs() -> Vec<String> {
-    let mut dirs = Vec::new();
+    let mut dirs: Vec<String> = Vec::new();
+    let xdg = latui_xdg();
 
-    if let Ok(home) = std::env::var("HOME") {
-        dirs.push(format!("{home}/.local/share/applications"));
+    if let Some(home) = xdg.get_data_home() {
+        dirs.push(home.join("applications").to_string_lossy().to_string());
     }
 
-    dirs.push("/usr/local/share/applications".to_string());
-    dirs.push("/usr/share/applications".to_string());
+    for dir in xdg.get_data_dirs() {
+        dirs.push(dir.join("applications").to_string_lossy().to_string());
+    }
 
     dirs
 }

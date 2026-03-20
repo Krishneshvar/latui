@@ -23,11 +23,11 @@ fn default_schema_version() -> u32 {
 }
 
 use crate::error::CacheError;
+use crate::core::utils::{current_timestamp, latui_xdg};
 use tracing::{debug, info, instrument};
-use xdg::BaseDirectories;
 
 pub fn cache_path() -> Result<PathBuf, CacheError> {
-    let xdg = BaseDirectories::with_prefix("latui");
+    let xdg = latui_xdg();
     let path = xdg.place_cache_file("apps.json")?;
     Ok(path)
 }
@@ -59,10 +59,7 @@ pub fn save_cache(items: &[SearchableItem], cache_key: &str) -> Result<(), Cache
     debug!("Serializing {} items to disk cache...", items.len());
     let cache = CachedApps {
         schema_version: APPS_CACHE_SCHEMA_VERSION,
-        built_at_unix: std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs(),
+        built_at_unix: current_timestamp(),
         cache_key: cache_key.to_string(),
         apps: items.to_vec(),
     };

@@ -2,16 +2,17 @@ use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::Style,
-    widgets::{Block, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Tabs},
+    widgets::{Block, List, ListItem, Paragraph, Tabs},
 };
 use ratatui_image::StatefulImage;
 
 use crate::app::state::AppState;
 use crate::config::theme::{ItemDisplay, NavbarPosition};
+use crate::core::icons;
 use crate::core::item::Item;
+use crate::ui::components::scrollbar::render_scrollbar;
 use crate::ui::style_resolver;
-use freedesktop_desktop_entry::DesktopEntry;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 /// Main rendering function for the TUI.
 /// Draws the mode tabs, search input, and results list.
@@ -197,27 +198,8 @@ fn render_results_list(frame: &mut Frame, app: &mut AppState, area: Rect) {
 
     frame.render_stateful_widget(list, area, &mut app.list_state);
 
-    let show_scrollbar = config.show_scrollbar;
-    let track_symbol = config.scrollbar.track_symbol.clone();
-    let thumb_symbol = config.scrollbar.thumb_symbol.clone();
-
-    // Render scrollbar if enabled
-    if show_scrollbar && results_count > 0 {
-        let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
-            .begin_symbol(None)
-            .end_symbol(None)
-            .track_symbol(Some(&track_symbol))
-            .thumb_symbol(&thumb_symbol);
-
-        let mut scrollbar_state = ScrollbarState::new(results_count.saturating_sub(1))
-            .position(app.list_state.selected().unwrap_or(0));
-
-        frame.render_stateful_widget(
-            scrollbar,
-            area.inner(ratatui::layout::Margin { vertical: 1, horizontal: 0 }),
-            &mut scrollbar_state,
-        );
-    }
+    let selected = app.list_state.selected().unwrap_or(0);
+    render_scrollbar(frame, app, area, selected, results_count);
 }
 
 fn render_apps_results_list_with_inline_icons(frame: &mut Frame, app: &mut AppState, area: Rect) {
@@ -246,6 +228,10 @@ fn render_apps_results_list_with_inline_icons(frame: &mut Frame, app: &mut AppSt
         .min(item_count.saturating_sub(1));
     app.list_state.select(Some(selected));
 
+    // Manual scroll offset management:
+    // Since we are not using ratatui's List widget for this specialized rendering
+    // (needed for inline local image rendering), we must manually handle the viewport offset.
+    // ListState manages the selection but we must synchronize its internal offset.
     let viewport_rows = inner.height as usize;
     let mut offset = app.list_state.offset().min(item_count.saturating_sub(1));
     if selected < offset {
@@ -380,27 +366,7 @@ fn render_apps_results_list_with_inline_icons(frame: &mut Frame, app: &mut AppSt
     }
 
     // Render scrollbar
-    let (show_scrollbar, track_symbol, thumb_symbol) = {
-        let s = &app.config.results;
-        (s.show_scrollbar, s.scrollbar.track_symbol.clone(), s.scrollbar.thumb_symbol.clone())
-    };
-
-    if show_scrollbar && item_count > 0 {
-        let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
-            .begin_symbol(None)
-            .end_symbol(None)
-            .track_symbol(Some(&track_symbol))
-            .thumb_symbol(&thumb_symbol);
-
-        let mut scrollbar_state = ScrollbarState::new(item_count.saturating_sub(1))
-            .position(selected);
-
-        frame.render_stateful_widget(
-            scrollbar,
-            area.inner(ratatui::layout::Margin { vertical: 1, horizontal: 0 }),
-            &mut scrollbar_state,
-        );
-    }
+    render_scrollbar(frame, app, area, selected, item_count);
 }
 
 fn render_inline_icon_image(
@@ -456,40 +422,9 @@ fn resolve_desktop_icon_path(app: &mut AppState, item: &Item) -> Option<PathBuf>
         return cached.clone();
     }
 
-    let desktop_path = PathBuf::from(&item.id);
-    let resolved = resolve_desktop_icon_path_impl(&desktop_path);
+    let desktop_path = std::path::Path::new(&item.id);
+    let resolved = icons::resolve_icon_from_entry(&desktop_path);
     app.desktop_icon_path_cache
         .insert(item.id.clone(), resolved.clone());
     resolved
-}
-
-fn resolve_desktop_icon_path_impl(desktop_path: &Path) -> Option<PathBuf> {
-    if !desktop_path.exists() {
-        return None;
-    }
-
-    let entry = DesktopEntry::from_path(desktop_path, None::<&[&str]>).ok()?;
-    let icon_name = entry.icon()?.trim();
-    if icon_name.is_empty() {
-        return None;
-    }
-
-    let direct = Path::new(icon_name);
-    if direct.is_absolute() && direct.exists() {
-        return Some(direct.to_path_buf());
-    }
-
-    let theme = std::env::var("LATUI_ICON_THEME")
-        .ok()
-        .map(|v| v.trim().to_string())
-        .filter(|v| !v.is_empty())
-        .or_else(freedesktop_icons::default_theme_gtk)
-        .unwrap_or_else(|| "hicolor".to_string());
-
-    freedesktop_icons::lookup(icon_name)
-        .with_size(96)
-        .with_scale(1)
-        .with_theme(&theme)
-        .with_cache()
-        .find()
 }

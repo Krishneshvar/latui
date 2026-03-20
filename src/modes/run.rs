@@ -1,4 +1,5 @@
 use crate::core::{item::Item, mode::Mode, searchable_item::SearchableItem};
+use crate::core::utils::{current_timestamp, latui_xdg};
 use crate::error::LatuiError;
 use crate::search::engine::SearchEngine;
 use crate::tracking::frequency::FrequencyTracker;
@@ -80,9 +81,7 @@ impl Default for RunMode {
 impl RunMode {
     /// Load command history from disk
     fn load_history(&mut self) -> Result<(), LatuiError> {
-        use xdg::BaseDirectories;
-
-        let xdg = BaseDirectories::with_prefix("latui");
+        let xdg = latui_xdg();
         let history_path = xdg
             .place_data_file("run_history.json")
             .map_err(|e| LatuiError::Xdg(e.to_string()))?;
@@ -198,25 +197,41 @@ impl RunMode {
         self.rebuild_searchable_history();
     }
 
+    /// Create a UI Item from a history entry
+    fn create_history_item(&self, entry: &HistoryEntry) -> Item {
+        Item {
+            id: format!("cmd:{}", entry.command),
+            title: entry.command.clone(),
+            search_text: entry.command.to_lowercase(),
+            description: Some(format!(
+                "Executed {} time{}",
+                entry.execution_count,
+                if entry.execution_count == 1 { "" } else { "s" }
+            )),
+            icon: None,
+            metadata: Some(entry.command.clone()),
+        }
+    }
+
+    /// Create a UI Item for direct command execution
+    fn create_direct_item(&self, command: &str) -> Item {
+        Item {
+            id: format!("direct:{}", command),
+            title: command.to_string(),
+            search_text: command.to_lowercase(),
+            description: Some("Execute command".to_string()),
+            icon: None,
+            metadata: Some(command.to_string()),
+        }
+    }
+
     /// Rebuild searchable items from history
     fn rebuild_searchable_history(&mut self) {
         self.searchable_history = self
             .history
             .iter()
             .map(|entry| {
-                let item = Item {
-                    id: format!("cmd:{}", entry.command),
-                    title: entry.command.clone(),
-                    search_text: entry.command.to_lowercase(),
-                    description: Some(format!(
-                        "Executed {} time{}",
-                        entry.execution_count,
-                        if entry.execution_count == 1 { "" } else { "s" }
-                    )),
-                    icon: None,
-                    metadata: Some(entry.command.clone()),
-                };
-
+                let item = self.create_history_item(entry);
                 SearchableItem::new(item).with_field("command", &entry.command, 10.0)
             })
             .collect();
@@ -230,18 +245,7 @@ impl RunMode {
             .take(RECENT_COMMANDS_LIMIT)
             .enumerate()
             .map(|(idx, entry)| {
-                let item = Item {
-                    id: format!("cmd:{}", entry.command),
-                    title: entry.command.clone(),
-                    search_text: entry.command.to_lowercase(),
-                    description: Some(format!(
-                        "Executed {} time{}",
-                        entry.execution_count,
-                        if entry.execution_count == 1 { "" } else { "s" }
-                    )),
-                    icon: None,
-                    metadata: Some(entry.command.clone()),
-                };
+                let item = self.create_history_item(entry);
 
                 // Score based on recency and frequency
                 let recency_score = (RECENT_COMMANDS_LIMIT - idx) as f64 * 10.0;
@@ -351,14 +355,7 @@ impl Mode for RunMode {
         let mut results: Vec<(Item, f64)> = Vec::new();
 
         // Always include direct execution option as first result
-        let direct_item = Item {
-            id: format!("direct:{}", q),
-            title: q.to_string(),
-            search_text: q.to_lowercase(),
-            description: Some("Execute command".to_string()),
-            icon: None,
-            metadata: Some(q.to_string()),
-        };
+        let direct_item = self.create_direct_item(q);
         results.push((direct_item, 10000.0)); // Highest priority
 
         // Search through history
@@ -456,13 +453,7 @@ impl Drop for RunMode {
     }
 }
 
-/// Get current Unix timestamp
-fn current_timestamp() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
-}
+
 
 #[cfg(test)]
 mod tests {

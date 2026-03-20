@@ -1,6 +1,6 @@
 use crate::tracking::database::{Database, DatabaseError};
 use std::path::Path;
-use std::time::{SystemTime, UNIX_EPOCH};
+use crate::core::utils::current_timestamp;
 
 /// Tracks application launch frequency and calculates boosts
 pub struct FrequencyTracker {
@@ -81,7 +81,7 @@ impl FrequencyTracker {
         match self.db.get_query_stats(query) {
             Ok(stats) => {
                 // Find this app in the stats
-                let total_selections: u32 = stats.iter().map(|(_, count)| count).sum();
+                let total_selections: u32 = stats.iter().map(|(_, count): &(String, u32)| *count).sum();
                 if total_selections == 0 {
                     return 0.0;
                 }
@@ -114,10 +114,4 @@ impl FrequencyTracker {
     }
 }
 
-/// Get current Unix timestamp
-fn current_timestamp() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
-}
+

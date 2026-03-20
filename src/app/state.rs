@@ -1,6 +1,6 @@
 use crate::core::item::Item;
 use crate::core::registry::ModeRegistry;
-use crate::ui::theme::Theme;
+use crate::config::theme::AppConfig;
 use ratatui::widgets::ListState;
 use ratatui_image::picker::{Picker, ProtocolType};
 use ratatui_image::protocol::StatefulProtocol;
@@ -19,7 +19,7 @@ pub struct AppState {
     pub mode_registry: ModeRegistry,
     pub active_tab: usize,
     pub show_preview: bool,
-    pub theme: Theme,
+    pub config: AppConfig,
     pub image_support: Option<ImageSupport>,
     pub icon_preview_protocols: HashMap<String, StatefulProtocol>,
     pub desktop_icon_path_cache: HashMap<String, Option<PathBuf>>,
@@ -38,7 +38,7 @@ impl AppState {
             mode_registry: ModeRegistry::new(),
             active_tab: 0,
             show_preview: false,
-            theme: Theme::default(),
+            config: AppConfig::default(),
             image_support: None,
             icon_preview_protocols: HashMap::new(),
             desktop_icon_path_cache: HashMap::new(),

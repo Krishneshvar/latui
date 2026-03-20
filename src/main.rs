@@ -59,6 +59,15 @@ fn main() -> anyhow::Result<()> {
 
     let _guard =
         init_tracing().map_err(|e| anyhow::anyhow!("Failed to initialize logging: {}", e))?;
+    
+    // Set panic hook to ensure terminal restoration
+    std::panic::set_hook(Box::new(|panic_info| {
+        let _ = crossterm::terminal::disable_raw_mode();
+        let _ = execute!(std::io::stdout(), LeaveAlternateScreen);
+        eprintln!("Latui Panic: {}", panic_info);
+        tracing::error!("FATAL PANIC: {}", panic_info);
+    }));
+
     info!("Starting Latui launcher...");
 
     let res = run_app();

@@ -18,13 +18,14 @@
 //! - All paths are canonicalised and validated to prevent path-traversal.
 
 use crate::core::{item::Item, mode::Mode, searchable_item::SearchableItem};
+use crate::core::utils::current_timestamp;
 use crate::error::LatuiError;
 use crate::search::engine::SearchEngine;
 
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+
 use std::time::Instant;
 use walkdir::WalkDir;
 
@@ -129,7 +130,9 @@ impl FilesMode {
 
     /// Create a new `FilesMode` that searches `$HOME`.
     pub fn new() -> Self {
-        let home = home_dir();
+        let home = std::env::var("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| PathBuf::from("/"));
         Self::with_roots(vec![home])
     }
 
@@ -629,25 +632,17 @@ impl Mode for FilesMode {
         tracing::info!("Opening file/dir: {}", path.display());
 
         // Open using the system default handler.
-        let result = Command::new("xdg-open").arg(&path).spawn();
+        crate::core::execution::ExecutionEngine::spawn_shell(&format!("xdg-open \"{}\"", meta.path), &[])?;
 
-        match result {
-            Ok(_) => {
-                // Record in recents.
-                self.add_to_recents(&meta.path);
+        // Record in recents.
+        self.add_to_recents(&meta.path);
 
-                // Persist immediately.
-                if let Err(e) = self.save_recents() {
-                    tracing::error!("Failed to save recents after open: {}", e);
-                }
-
-                Ok(())
-            }
-            Err(e) => {
-                tracing::error!("Failed to open '{}' with xdg-open: {}", path.display(), e);
-                Err(LatuiError::Io(e))
-            }
+        // Persist immediately.
+        if let Err(e) = self.save_recents() {
+            tracing::error!("Failed to save recents after open: {}", e);
         }
+
+        Ok(())
     }
 
     // ── record_selection ─────────────────────────────────────────────────
@@ -726,23 +721,6 @@ impl Drop for FilesMode {
             tracing::error!("Failed to save recents on drop: {}", e);
         }
     }
-}
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-/// Return the current Unix timestamp in seconds.
-fn current_timestamp() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
-}
-
-/// Resolve the user's home directory (with a safe fallback).
-fn home_dir() -> PathBuf {
-    std::env::var("HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from("/"))
 }
 
 impl Default for FilesMode {

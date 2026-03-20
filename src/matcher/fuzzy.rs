@@ -56,3 +56,40 @@ impl FuzzyMatcher {
         results
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_fuzzy_empty_query() {
+        let mut matcher = FuzzyMatcher::new();
+        let items = vec!["apple", "banana"];
+        let results = matcher.filter("", &items);
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0], (0, 0));
+        assert_eq!(results[1], (1, 0));
+    }
+
+    #[test]
+    fn test_fuzzy_pattern_match() {
+        let mut matcher = FuzzyMatcher::new();
+        let items = vec!["firefox", "chromium", "brave", "file manager"];
+        let results = matcher.filter("ffox", &items);
+        
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].0, 0); // "firefox"
+        assert!(results[0].1 > 0);
+    }
+
+    #[test]
+    fn test_fuzzy_case_insensitive() {
+        let mut matcher = FuzzyMatcher::new();
+        let items = vec!["Terminal", "terminal"];
+        let results = matcher.filter("term", &items);
+        
+        assert_eq!(results.len(), 2);
+        // Scores should be identical
+        assert_eq!(results[0].1, results[1].1);
+    }
+}

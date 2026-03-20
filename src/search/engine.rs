@@ -157,3 +157,51 @@ impl SearchEngine {
         score
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::item::Item;
+    use crate::core::searchable_item::SearchableItem;
+
+    fn create_item(id: &str, title: &str) -> SearchableItem {
+        SearchableItem::new(Item::new(id, title, title))
+            .with_field("name", title, 10.0)
+    }
+
+    #[test]
+    fn test_engine_empty_query() {
+        let engine = SearchEngine::new();
+        let items = vec![create_item("1", "App"), create_item("2", "Browser")];
+        
+        let results = engine.search("", &items);
+        assert_eq!(results.len(), 2);
+    }
+
+    #[test]
+    fn test_engine_exact_match_score() {
+        let engine = SearchEngine::new();
+        let items = vec![
+            create_item("1", "Terminal"),
+            create_item("2", "Term"),
+        ];
+        
+        let results = engine.search_scored("term", &items);
+        assert_eq!(results.len(), 2);
+        // Term should score higher due to exact match logic vs prefix match
+        assert_eq!(results[0].0.id, "2"); 
+        assert!(results[0].1 > results[1].1);
+    }
+
+    #[test]
+    fn test_engine_result_limit() {
+        let engine = SearchEngine::new();
+        let mut items = Vec::new();
+        for i in 0..100 {
+            items.push(create_item(&i.to_string(), "Match"));
+        }
+        
+        let results = engine.search("match", &items);
+        assert_eq!(results.len(), 50); // Hardcoded limit to 50 in engine.rs
+    }
+}

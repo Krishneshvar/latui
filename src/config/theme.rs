@@ -335,3 +335,42 @@ fn default_selected_modifier() -> Vec<TextModifier> { vec![TextModifier::Bold] }
 fn default_selection_symbol() -> String { ">> ".to_string() }
 fn default_thumb() -> String { "█".to_string() }
 fn default_track() -> String { "░".to_string() }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_app_config_defaults() {
+        let toml_str = "";
+        let config: AppConfig = toml::from_str(toml_str).unwrap();
+
+        assert_eq!(config.general.theme, "dark");
+        assert_eq!(config.layout.navbar_height, 3);
+        assert!(config.navbar.visible);
+        assert_eq!(config.search.prompt_symbol, "> ");
+        assert!(config.results.show_scrollbar);
+        assert_eq!(config.results.item_display, ItemDisplay::IconNameDesc);
+    }
+
+    #[test]
+    fn test_app_config_overrides() {
+        let toml_str = r#"
+        [general]
+        theme = "light"
+        max_results = 100
+
+        [layout]
+        navbar_position = "bottom"
+
+        [results]
+        item_display = "icon_name"
+        "#;
+        let config: AppConfig = toml::from_str(toml_str).unwrap();
+
+        assert_eq!(config.general.theme, "light");
+        assert_eq!(config.general.max_results, 100);
+        assert_eq!(config.layout.navbar_position, NavbarPosition::Bottom);
+        assert_eq!(config.results.item_display, ItemDisplay::IconName);
+    }
+}

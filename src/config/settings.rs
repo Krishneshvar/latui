@@ -215,3 +215,52 @@ fn default_desktop_dirs() -> Vec<String> {
 
     dirs
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_modes_settings_defaults() {
+        let toml_str = "";
+        let settings: ModesSettings = toml::from_str(toml_str).unwrap();
+
+        assert!(settings.apps.include.is_empty());
+        assert!(!settings.apps.skip_terminal_apps);
+        assert!(settings.apps.icons.enabled);
+        assert_eq!(settings.apps.icons.render_mode, AppsIconRenderMode::Thumbnail);
+        assert_eq!(settings.custom.len(), 0);
+    }
+
+    #[test]
+    fn test_modes_settings_overrides() {
+        let toml_str = r#"
+        [apps]
+        skip_terminal_apps = true
+        exclude = ["kitty"]
+
+        [apps.icons]
+        render_mode = "icon_name"
+        size = 32
+
+        [custom.my_power_menu]
+        name = "Power"
+        icon = "⏻"
+        description = "Session management"
+        list_cmd = "echo 'Shutdown\nReboot'"
+        exec_cmd = "echo {}"
+        stays_open = false
+        "#;
+        let settings: ModesSettings = toml::from_str(toml_str).unwrap();
+
+        assert!(settings.apps.skip_terminal_apps);
+        assert_eq!(settings.apps.exclude.len(), 1);
+        assert_eq!(settings.apps.icons.size, 32);
+        assert_eq!(settings.apps.icons.render_mode, AppsIconRenderMode::IconName);
+        
+        assert_eq!(settings.custom.len(), 1);
+        let custom = settings.custom.get("my_power_menu").unwrap();
+        assert_eq!(custom.name, "Power");
+        assert_eq!(custom.exec_cmd, "echo {}");
+    }
+}

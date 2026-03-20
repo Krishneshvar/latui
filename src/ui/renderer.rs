@@ -2,7 +2,7 @@ use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::Style,
-    widgets::{List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Tabs},
+    widgets::{Block, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Tabs},
 };
 use ratatui_image::StatefulImage;
 
@@ -18,6 +18,12 @@ use std::path::{Path, PathBuf};
 pub fn draw(frame: &mut Frame, app: &mut AppState) {
     let size = frame.area();
     let config = &app.config;
+
+    // Render full background if configured
+    if let Some(ref bg) = config.general.full_background {
+        let full_bg_style = Style::default().bg(style_resolver::parse_color(bg));
+        frame.render_widget(Block::default().style(full_bg_style), size);
+    }
 
     // Apply margins
     let inner_area = Rect::new(

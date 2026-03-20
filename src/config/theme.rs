@@ -25,6 +25,7 @@ pub struct GeneralConfig {
     pub max_results: usize,
     #[serde(default = "default_theme_name")]
     pub theme: String,
+    pub full_background: Option<String>,
 }
 
 impl Default for GeneralConfig {
@@ -33,6 +34,7 @@ impl Default for GeneralConfig {
             default_mode: default_mode(),
             max_results: default_max_results(),
             theme: default_theme_name(),
+            full_background: None,
         }
     }
 }

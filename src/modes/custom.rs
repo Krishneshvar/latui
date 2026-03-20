@@ -51,7 +51,7 @@ impl CustomMode {
             .arg("-c")
             .arg(&self.config.list_cmd)
             .output()
-            .map_err(|e| LatuiError::Io(e))?;
+            .map_err(LatuiError::Io)?;
 
         if !output.status.success() {
             let err_msg = String::from_utf8_lossy(&output.stderr);
@@ -165,11 +165,11 @@ impl Mode for CustomMode {
 
     fn execute(&mut self, item: &Item) -> Result<(), LatuiError> {
         // Rate limiting
-        if let Some(last) = self.last_action_time {
-            if last.elapsed() < std::time::Duration::from_millis(500) {
-                tracing::warn!("Rate limiting execution for: {}", item.title);
-                return Ok(());
-            }
+        if let Some(last) = self.last_action_time
+            && last.elapsed() < std::time::Duration::from_millis(500)
+        {
+            tracing::warn!("Rate limiting execution for: {}", item.title);
+            return Ok(());
         }
         self.last_action_time = Some(Instant::now());
 

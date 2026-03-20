@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use serde::Deserialize;
 use crate::error::{LatuiError, ConfigError};
 
-/// Manages semantic keyword mappings (e.g., "browser" -> ["firefox", "chrome"])
+/// Manages semantic keyword mappings (e.g., `browser` -> `["firefox", "chrome"]`)
 #[derive(Debug, Default)]
 pub struct KeywordMapper {
     mappings: HashMap<String, Vec<String>>,

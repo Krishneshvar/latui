@@ -63,19 +63,19 @@ pub enum FileKind {
 impl FileKind {
     fn from_path(path: &Path) -> Self {
         if path.is_symlink() {
-            FileKind::Symlink
+            Self::Symlink
         } else if path.is_dir() {
-            FileKind::Dir
+            Self::Dir
         } else {
-            FileKind::File
+            Self::File
         }
     }
 
-    fn icon(&self) -> &'static str {
+    const fn icon(&self) -> &'static str {
         match self {
-            FileKind::File => "📄",
-            FileKind::Dir => "📁",
-            FileKind::Symlink => "🔗",
+            Self::File => "📄",
+            Self::Dir => "📁",
+            Self::Symlink => "🔗",
         }
     }
 }
@@ -132,13 +132,12 @@ impl FilesMode {
     /// Create a new `FilesMode` that searches `$HOME`.
     pub fn new() -> Self {
         let home = std::env::var("HOME")
-            .map(PathBuf::from)
-            .unwrap_or_else(|_| PathBuf::from("/"));
+            .map_or_else(|_| PathBuf::from("/"), PathBuf::from);
         Self::with_roots(vec![home])
     }
 
     /// Create a `FilesMode` with custom search roots.
-    pub fn with_roots(roots: Vec<PathBuf>) -> Self {
+    pub const fn with_roots(roots: Vec<PathBuf>) -> Self {
         Self {
             recents: VecDeque::new(),
             searchable_recents: Vec::new(),
@@ -278,8 +277,7 @@ impl FilesMode {
                 let kind = FileKind::from_path(path);
                 let file_name = path
                     .file_name()
-                    .map(|n| n.to_string_lossy().to_string())
-                    .unwrap_or_else(|| entry.path.clone());
+                    .map_or_else(|| entry.path.clone(), |n| n.to_string_lossy().to_string());
                 let parent = path
                     .parent()
                     .map(|p| p.to_string_lossy().to_string())
@@ -327,8 +325,7 @@ impl FilesMode {
                 let kind = FileKind::from_path(path);
                 let file_name = path
                     .file_name()
-                    .map(|n| n.to_string_lossy().to_string())
-                    .unwrap_or_else(|| entry.path.clone());
+                    .map_or_else(|| entry.path.clone(), |n| n.to_string_lossy().to_string());
                 let parent = path
                     .parent()
                     .map(|p| p.to_string_lossy().to_string())
@@ -350,9 +347,10 @@ impl FilesMode {
                 };
 
                 // Score: recency weight + frequency bonus
-                let recency_score = (total - idx) as f64 * 10.0;
-                let frequency_score = (entry.open_count as f64).ln() * 15.0;
-                Some((item, recency_score + frequency_score))
+                #[allow(clippy::cast_precision_loss)]
+                let score =
+                    ((total - idx) as f64).mul_add(10.0, (entry.open_count as f64).ln_1p() * 15.0);
+                Some((item, score))
             })
             .collect();
 
@@ -374,16 +372,13 @@ impl FilesMode {
         let mut results: Vec<(Item, f64)> = Vec::new();
 
         for root in &self.search_roots {
-            let canonical_root = match root.canonicalize() {
-                Ok(p) => p,
-                Err(_) => root.clone(),
-            };
+            let canonical_root = root.canonicalize().unwrap_or_else(|_| root.clone());
 
             for entry in WalkDir::new(root)
                 .max_depth(SEARCH_MAX_DEPTH)
                 .follow_links(false)
                 .into_iter()
-                .filter_map(|e| e.ok())
+                .filter_map(std::result::Result::ok)
                 // Skip hidden directories (names starting with '.'), except
                 // the root itself.
                 .filter(|e| e.depth() == 0 || !e.file_name().to_string_lossy().starts_with('.'))
@@ -468,7 +463,7 @@ impl FilesMode {
 
         let pb = PathBuf::from(path);
         if !pb.exists() {
-            return Err(LatuiError::App(format!("Path does not exist: {}", path)));
+            return Err(LatuiError::App(format!("Path does not exist: {path}")));
         }
 
         Ok(pb)
@@ -510,15 +505,15 @@ impl FilesMode {
 // ─── Mode trait implementation ────────────────────────────────────────────────
 
 impl Mode for FilesMode {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "files"
     }
 
-    fn icon(&self) -> &str {
+    fn icon(&self) -> &'static str {
         "📁"
     }
 
-    fn description(&self) -> &str {
+    fn description(&self) -> &'static str {
         "Filesystem Search"
     }
 
@@ -626,7 +621,7 @@ impl Mode for FilesMode {
             .ok_or_else(|| LatuiError::App("Missing file metadata".to_string()))?;
 
         let meta: FileMetadata = serde_json::from_str(meta_json)
-            .map_err(|e| LatuiError::App(format!("Corrupt file metadata: {}", e)))?;
+            .map_err(|e| LatuiError::App(format!("Corrupt file metadata: {e}")))?;
 
         // Validate path (existence, length, null-bytes).
         let path = Self::validate_path(&meta.path)?;
@@ -688,7 +683,7 @@ impl Mode for FilesMode {
             FileKind::File => Self::text_preview(path).or_else(|| {
                 // For binary files just show basic stats.
                 let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
-                Some(format!("Binary file — {} bytes", size))
+                Some(format!("Binary file — {size} bytes"))
             }),
 
             FileKind::Dir => {
@@ -705,9 +700,8 @@ impl Mode for FilesMode {
 
             FileKind::Symlink => {
                 let target = std::fs::read_link(path)
-                    .map(|t| t.to_string_lossy().to_string())
-                    .unwrap_or_else(|_| "<unreadable>".to_string());
-                Some(format!("🔗  Symlink → {}", target))
+                    .map_or_else(|_| "<unreadable>".to_string(), |t| t.to_string_lossy().to_string());
+                Some(format!("🔗  Symlink → {target}"))
             }
         }
     }

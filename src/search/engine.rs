@@ -18,7 +18,7 @@ impl Default for SearchEngine {
 }
 
 impl SearchEngine {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             tokenizer: Tokenizer::new(),
             typo_tolerance: TypoTolerance::new(),

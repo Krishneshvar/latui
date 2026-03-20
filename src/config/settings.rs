@@ -50,7 +50,7 @@ impl Default for AppsModeSettings {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Default, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum AppsIconRenderMode {
     #[default]
@@ -125,26 +125,25 @@ pub fn load_user_settings() -> AppConfig {
     }
 
     // 2. Resolve theme if not "inline"
-    if config.general.theme != "inline" {
-        let theme_name = config.general.theme.clone();
-        if let Some(theme_cfg) = load_theme(&theme_name) {
-            // Re-parse the user config to identify what was actually there
-            // Reuse the content we already read
-            if let Some(content) = raw_toml
-                && let Ok(user_toml_value) = toml::from_str::<toml::Value>(&content) {
-                    // Start with theme defaults
-                    let mut final_toml = toml::Value::try_from(theme_cfg.clone()).unwrap_or(toml::Value::Table(Default::default()));
-                    
-                    // Deep merge user overrides on top of theme
-                    crate::core::utils::merge_toml(&mut final_toml, user_toml_value);
-                    
-                    // Convert back to AppConfig
-                    if let Ok(merged_cfg) = final_toml.try_into() {
-                        return merged_cfg;
-                    }
+    let theme_name = &config.general.theme;
+    if theme_name != "inline" && let Some(theme_cfg) = load_theme(theme_name) {
+        // Re-parse the user config to identify what was actually there
+        // Reuse the content we already read
+        if let Some(content) = raw_toml
+            && let Ok(user_toml_value) = toml::from_str::<toml::Value>(&content) {
+                // Start with theme defaults
+                let mut final_toml = toml::Value::try_from(theme_cfg.clone())
+                    .unwrap_or_else(|_| toml::Value::Table(toml::map::Map::default()));
+                
+                // Deep merge user overrides on top of theme
+                crate::core::utils::merge_toml(&mut final_toml, user_toml_value);
+                
+                // Convert back to AppConfig
+                if let Ok(merged_cfg) = final_toml.try_into() {
+                    return merged_cfg;
                 }
-            return theme_cfg;
         }
+        return theme_cfg;
     }
 
     config
@@ -153,7 +152,7 @@ pub fn load_user_settings() -> AppConfig {
 fn load_theme(name: &str) -> Option<AppConfig> {
     // 1. Try ~/.config/latui/themes/<name>.toml
     let xdg = latui_xdg();
-    if let Some(theme_path) = xdg.find_config_file(format!("themes/{}.toml", name))
+    if let Some(theme_path) = xdg.find_config_file(format!("themes/{name}.toml"))
         && let Ok(content) = std::fs::read_to_string(&theme_path)
             && let Ok(cfg) = toml::from_str::<AppConfig>(&content) {
                 info!("Loaded theme '{}' from {}", name, theme_path.display());
@@ -186,15 +185,15 @@ fn load_theme(name: &str) -> Option<AppConfig> {
     None
 }
 
-fn default_true() -> bool {
+const fn default_true() -> bool {
     true
 }
 
-fn default_icon_size() -> u16 {
+const fn default_icon_size() -> u16 {
     24
 }
 
-fn default_icon_scale() -> u16 {
+const fn default_icon_scale() -> u16 {
     1
 }
 

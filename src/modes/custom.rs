@@ -28,7 +28,7 @@ pub struct CustomMode {
 }
 
 impl CustomMode {
-    pub fn new(id: String, config: CustomModeConfig) -> Self {
+    pub const fn new(id: String, config: CustomModeConfig) -> Self {
         Self {
             id,
             config,
@@ -56,8 +56,8 @@ impl CustomMode {
 
         if !output.status.success() {
             let err_msg = String::from_utf8_lossy(&output.stderr);
-            tracing::error!("Custom mode list_cmd failed: {}", err_msg);
-            return Err(LatuiError::App(format!("Script failed: {}", err_msg)));
+            tracing::error!("Custom mode list_cmd failed: {err_msg}");
+            return Err(LatuiError::App(format!("Script failed: {err_msg}")));
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);

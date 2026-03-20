@@ -7,7 +7,7 @@ pub const MAX_TRIE_WORD_LENGTH: usize = 32;
 
 #[derive(Debug, Default)]
 pub struct TrieNode {
-    pub children: FxHashMap<char, TrieNode>,
+    pub children: FxHashMap<char, Self>,
     pub items: FxHashSet<usize>,
 }
 

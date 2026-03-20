@@ -63,6 +63,11 @@ impl std::fmt::Debug for AppState {
 }
 
 impl AppState {
+    /// Create a new application state with default settings.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the hardcoded LRU cache capacities (100, 500) are zero.
     pub fn new() -> Self {
         let mut list_state = ListState::default();
         list_state.select(Some(0));
@@ -76,8 +81,8 @@ impl AppState {
             show_preview: false,
             config: AppConfig::default(),
             image_support: None,
-            icon_preview_protocols: LruCache::new(NonZeroUsize::new(100).unwrap()),
-            desktop_icon_path_cache: LruCache::new(NonZeroUsize::new(500).unwrap()),
+            icon_preview_protocols: LruCache::new(NonZeroUsize::new(100).expect("Infallible size")),
+            desktop_icon_path_cache: LruCache::new(NonZeroUsize::new(500).expect("Infallible size")),
             failed_icon_paths: HashSet::new(),
         }
     }
@@ -109,7 +114,7 @@ impl AppState {
         self.failed_icon_paths.clear();
     }
 
-    pub fn next(&mut self) {
+    pub const fn next(&mut self) {
         if self.filtered_items.is_empty() {
             return;
         }
@@ -128,7 +133,7 @@ impl AppState {
         self.list_state.select(Some(i));
     }
 
-    pub fn previous(&mut self) {
+    pub const fn previous(&mut self) {
         if self.filtered_items.is_empty() {
             return;
         }
@@ -147,7 +152,7 @@ impl AppState {
         self.list_state.select(Some(i));
     }
 
-    pub fn reset_selection(&mut self) {
+    pub const fn reset_selection(&mut self) {
         self.list_state.select(Some(0));
     }
 }

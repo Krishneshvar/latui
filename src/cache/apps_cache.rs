@@ -18,7 +18,7 @@ pub struct CachedApps {
     pub apps: Vec<SearchableItem>,
 }
 
-fn default_schema_version() -> u32 {
+const fn default_schema_version() -> u32 {
     APPS_CACHE_SCHEMA_VERSION
 }
 

@@ -5,6 +5,7 @@ use latui::core::mode::Mode;
 use latui::core::registry::ModeRegistry;
 use latui::error::LatuiError;
 
+#[derive(Debug)]
 struct MockMode {
     pub name: String,
 }

@@ -25,6 +25,7 @@ use crate::error::LatuiError;
 use crate::search::engine::SearchEngine;
 
 use serde::{Deserialize, Serialize};
+use std::fmt::Write;
 use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::process::Command;
@@ -40,6 +41,9 @@ const RECENT_DISPLAY_LIMIT: usize = 30;
 
 /// Characters shown in the item title (to keep the UI compact).
 const TITLE_MAX_CHARS: usize = 80;
+
+/// Maximum number of lines shown in the preview window.
+const PREVIEW_MAX_LINES: usize = 20;
 
 /// Maximum content length (bytes) we accept into history.
 /// Prevents multi-megabyte binary pastes from bloating the store.
@@ -79,7 +83,7 @@ impl ClipBackend {
             .unwrap_or(false);
 
         if wayland && command_exists("wl-copy") {
-            return ClipBackend::Wayland;
+            return Self::Wayland;
         }
 
         let display = std::env::var("DISPLAY")
@@ -87,18 +91,18 @@ impl ClipBackend {
             .unwrap_or(false);
 
         if display && command_exists("xclip") {
-            return ClipBackend::X11;
+            return Self::X11;
         }
 
-        ClipBackend::None
+        Self::None
     }
 
     /// Name for logging.
-    fn name(&self) -> &'static str {
+    const fn name(&self) -> &'static str {
         match self {
-            ClipBackend::Wayland => "wl-copy (Wayland)",
-            ClipBackend::X11 => "xclip (X11)",
-            ClipBackend::None => "none",
+            Self::Wayland => "wl-copy (Wayland)",
+            Self::X11 => "xclip (X11)",
+            Self::None => "none",
         }
     }
 }
@@ -299,7 +303,7 @@ impl ClipboardMode {
                     // Stable ID: position in history + content hash-ish via len.
                     // We use the content itself as a canonical key so that
                     // promoted entries keep their id stable.
-                    id: format!("clip:{}", idx),
+                    id: format!("clip:{idx}"),
                     title: title.clone(),
                     search_text: entry.content.to_lowercase(),
                     description: Some(description),
@@ -340,7 +344,7 @@ impl ClipboardMode {
                 );
 
                 let item = Item {
-                    id: format!("clip:{}", idx),
+                    id: format!("clip:{idx}"),
                     title,
                     search_text: entry.content.to_lowercase(),
                     description: Some(description),
@@ -349,8 +353,9 @@ impl ClipboardMode {
                 };
 
                 // Score = recency weight + log-frequency bonus.
+                #[allow(clippy::cast_precision_loss)]
                 let recency = (limit - idx) as f64 * 10.0;
-                let freq = (entry.use_count as f64 + 1.0).ln() * 15.0;
+                let freq = (entry.use_count as f64).ln_1p() * 15.0;
                 (item, recency + freq)
             })
             .collect();
@@ -458,15 +463,15 @@ impl Default for ClipboardMode {
 // ─── Mode trait implementation ────────────────────────────────────────────────
 
 impl Mode for ClipboardMode {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "clipboard"
     }
 
-    fn icon(&self) -> &str {
+    fn icon(&self) -> &'static str {
         "📋"
     }
 
-    fn description(&self) -> &str {
+    fn description(&self) -> &'static str {
         "Clipboard History"
     }
 
@@ -578,7 +583,7 @@ impl Mode for ClipboardMode {
         tracing::trace!(
             "Clipboard selection: item='{}', len={}",
             item.title,
-            item.metadata.as_ref().map(|m| m.len()).unwrap_or(0)
+            item.metadata.as_ref().map_or(0, String::len)
         );
     }
 
@@ -594,8 +599,6 @@ impl Mode for ClipboardMode {
     /// ellipsis so the preview panel doesn't overflow.
     fn preview(&self, item: &Item) -> Option<String> {
         let content = item.metadata.as_ref()?;
-
-        const PREVIEW_MAX_LINES: usize = 20;
         let lines: Vec<&str> = content.lines().collect();
 
         if lines.len() <= PREVIEW_MAX_LINES {
@@ -607,11 +610,12 @@ impl Mode for ClipboardMode {
         let shown: Vec<&str> = lines[..PREVIEW_MAX_LINES].to_vec();
         let remaining = lines.len() - PREVIEW_MAX_LINES;
         let mut preview = shown.join("\n");
-        preview.push_str(&format!(
+        let _ = write!(
+            preview,
             "\n\n… {} more line{}",
             remaining,
             if remaining == 1 { "" } else { "s" }
-        ));
+        );
         Some(preview)
     }
 }
@@ -651,9 +655,9 @@ fn make_title(content: &str) -> String {
     };
 
     if is_multiline {
-        format!("{}{} ⏎", truncated, ellipsis)
+        format!("{truncated}{ellipsis} ⏎")
     } else {
-        format!("{}{}", truncated, ellipsis)
+        format!("{truncated}{ellipsis}")
     }
 }
 

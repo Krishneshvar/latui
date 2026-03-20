@@ -25,7 +25,7 @@ pub struct IndexedField {
 
 impl SearchableItem {
     /// Create a new searchable item
-    pub fn new(item: Item) -> Self {
+    pub const fn new(item: Item) -> Self {
         Self {
             item,
             fields: Vec::new(),
@@ -33,6 +33,7 @@ impl SearchableItem {
         }
     }
 
+    #[must_use]
     pub fn with_field(mut self, name: &str, text: &str, weight: f64) -> Self {
         use crate::search::tokenizer::Tokenizer;
         let tokenizer = Tokenizer::new();

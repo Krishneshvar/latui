@@ -60,7 +60,7 @@ impl ModeRegistry {
             self.active_mode = mode_name.to_string();
             Ok(())
         } else {
-            Err(LatuiError::App(format!("Mode '{}' not found", mode_name)))
+            Err(LatuiError::App(format!("Mode '{mode_name}' not found")))
         }
     }
 

@@ -136,9 +136,8 @@ impl RunMode {
             return Ok(());
         }
 
-        let history_path = match &self.history_path {
-            Some(path) => path,
-            None => return Ok(()),
+        let Some(history_path) = &self.history_path else {
+            return Ok(());
         };
 
         let entries: Vec<HistoryEntry> = self.history.iter().cloned().collect();
@@ -199,7 +198,7 @@ impl RunMode {
     }
 
     /// Create a UI Item from a history entry
-    fn create_history_item(&self, entry: &HistoryEntry) -> Item {
+    fn create_history_item(entry: &HistoryEntry) -> Item {
         Item {
             id: format!("cmd:{}", entry.command),
             title: entry.command.clone(),
@@ -215,9 +214,9 @@ impl RunMode {
     }
 
     /// Create a UI Item for direct command execution
-    fn create_direct_item(&self, command: &str) -> Item {
+    fn create_direct_item(command: &str) -> Item {
         Item {
-            id: format!("direct:{}", command),
+            id: format!("direct:{command}"),
             title: command.to_string(),
             search_text: command.to_lowercase(),
             description: Some("Execute command".to_string()),
@@ -232,7 +231,7 @@ impl RunMode {
             .history
             .iter()
             .map(|entry| {
-                let item = self.create_history_item(entry);
+                let item = Self::create_history_item(entry);
                 SearchableItem::new(item).with_field("command", &entry.command, 10.0)
             })
             .collect();
@@ -246,12 +245,12 @@ impl RunMode {
             .take(RECENT_COMMANDS_LIMIT)
             .enumerate()
             .map(|(idx, entry)| {
-                let item = self.create_history_item(entry);
+                let item = Self::create_history_item(entry);
 
                 // Score based on recency and frequency
-                let recency_score = (RECENT_COMMANDS_LIMIT - idx) as f64 * 10.0;
-                let frequency_score = (entry.execution_count as f64).ln() * 20.0;
-                let mut score = recency_score + frequency_score;
+                #[allow(clippy::cast_precision_loss)]
+                let mut score =
+                    ((RECENT_COMMANDS_LIMIT - idx) as f64).mul_add(10.0, (entry.execution_count as f64).ln_1p() * 20.0);
 
                 // Add frequency tracker boost if available
                 if let Some(ref tracker) = self.frequency_tracker {
@@ -269,7 +268,7 @@ impl RunMode {
     }
 
     /// Validate command for security
-    fn validate_command(&self, command: &str) -> Result<(), LatuiError> {
+    fn validate_command(command: &str) -> Result<(), LatuiError> {
         // Check length
         if command.is_empty() {
             return Err(LatuiError::App("Command cannot be empty".to_string()));
@@ -289,9 +288,9 @@ impl RunMode {
 
     /// Execute a shell command
     fn execute_command(&mut self, command: &str) -> Result<(), LatuiError> {
-        self.validate_command(command)?;
+        Self::validate_command(command)?;
 
-        tracing::info!("Executing command: {}", command);
+        tracing::info!("Executing command: {command}");
 
         // Spawn command via centralized engine
         crate::core::execution::ExecutionEngine::spawn_shell(command, &[])?;
@@ -300,9 +299,9 @@ impl RunMode {
 
         // Record in frequency tracker
         if let Some(ref mut tracker) = self.frequency_tracker {
-            let id = format!("cmd:{}", command);
+            let id = format!("cmd:{command}");
             if let Err(e) = tracker.record_launch(&id) {
-                tracing::error!("Failed to record command execution: {}", e);
+                tracing::error!("Failed to record command execution: {e}");
             }
         }
 
@@ -311,15 +310,15 @@ impl RunMode {
 }
 
 impl Mode for RunMode {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "run"
     }
 
-    fn icon(&self) -> &str {
+    fn icon(&self) -> &'static str {
         "🚀"
     }
 
-    fn description(&self) -> &str {
+    fn description(&self) -> &'static str {
         "Command Executor"
     }
 
@@ -348,7 +347,7 @@ impl Mode for RunMode {
         let mut results: Vec<(Item, f64)> = Vec::new();
 
         // Always include direct execution option as first result
-        let direct_item = self.create_direct_item(q);
+        let direct_item = Self::create_direct_item(q);
         results.push((direct_item, 10000.0)); // Highest priority
 
         // Search through history
@@ -359,7 +358,7 @@ impl Mode for RunMode {
 
             // Apply frequency boosts
             if let Some(ref tracker) = self.frequency_tracker {
-                for (item, score) in history_results.iter_mut() {
+                for (item, score) in &mut history_results {
                     *score += tracker.get_frequency_boost(&item.id);
                     *score += tracker.get_recency_boost(&item.id);
                     *score += tracker.get_query_boost(q, &item.id);
@@ -411,7 +410,7 @@ impl Mode for RunMode {
 
         // Save history after execution
         if let Err(e) = self.save_history() {
-            tracing::error!("Failed to save command history: {}", e);
+            tracing::error!("Failed to save command history: {e}");
         }
 
         Ok(())
@@ -495,10 +494,10 @@ mod tests {
     fn test_validate_command() {
         let mode = RunMode::new();
 
-        assert!(mode.validate_command("ls -la").is_ok());
-        assert!(mode.validate_command("").is_err());
-        assert!(mode.validate_command(&"x".repeat(5000)).is_err());
-        assert!(mode.validate_command("test\0null").is_err());
+        assert!(RunMode::validate_command("ls -la").is_ok());
+        assert!(RunMode::validate_command("").is_err());
+        assert!(RunMode::validate_command(&"x".repeat(5000)).is_err());
+        assert!(RunMode::validate_command("test\0null").is_err());
     }
 
     #[test]

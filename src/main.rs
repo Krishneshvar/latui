@@ -121,9 +121,9 @@ fn run_app() -> anyhow::Result<()> {
         info!("Loaded custom keywords from {:?}", path);
     }
 
-    let apps_settings = load_user_settings()
-        .map(|cfg| cfg.modes.apps)
-        .unwrap_or_default();
+    // Load the full application configuration (including themes)
+    app.config = load_user_settings();
+    let apps_settings = app.config.modes.apps.clone();
 
     // Register built-in modes with injected dependencies
     app.mode_registry.register(

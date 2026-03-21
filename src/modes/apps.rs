@@ -32,6 +32,8 @@ pub struct AppsMode {
 
 use crate::search::tokenizer::Tokenizer;
 
+/// Resolves base icon names or paths into their actual filesystem locations
+/// using the Freedesktop icon specification standard.
 #[derive(Debug, Clone)]
 struct AppIconResolver {
     theme: String,

@@ -90,7 +90,7 @@ cargo build --release
 
 ## License & Contributing
 
-Licensed under the **GPL-3.0**. Contributions are welcome! Please ensure all new logic follows the Strategy Pattern and includes appropriate unit tests.
+Licensed under the **GPL-3.0**. Contributions are welcome! Please read our [Contributing Guidelines](CONTRIBUTING.md) before submitting a pull request. Ensure all new logic follows the Strategy Pattern and includes appropriate unit tests.
 
 ---
 

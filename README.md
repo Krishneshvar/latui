@@ -62,27 +62,13 @@ A fast, keyword-searchable emoji picker. Copy any of the 240+ embedded emojis to
 
 LaTUI follows a **loosely coupled Strategy Pattern** where the interaction between the UI and functionality is mediated by a common trait. This allows for massive extensibility and isolation of concerns.
 
-For a deep dive into LaTUI's structure, performance considerations, and internal modules, please see our [Architecture Documentation](./ARCHITECTURE.md) (or refer to the project's GitHub Wiki).
+For a deep dive into LaTUI's structure, performance considerations, and internal modules, please see our [Architecture Documentation](https://github.com/Krishneshvar/latui/wiki/ARCHITECTURE).
 
 ## Configuration
 
 LaTUI is thoroughly customizable via `~/.config/latui/config.toml`. You can configure colors, layouts, layout variants, modes, and keybindings.
 
-For full configuration instructions, layout modes, and theming features, please consult the [Configuration Guide](./CONFIGURATION.md) (or the relevant page on the GitHub Wiki).
-
----
-
-## Roadmap & Progress
-
-| Phase | Description | Status |
-| :--- | :--- | :---: |
-| **Phase 1** | Core Search & Multi-field Indexing | ✅ |
-| **Phase 2** | Typo Tolerance & Basic UI | ✅ |
-| **Phase 3** | **Run Mode** Implementation | ✅ |
-| **Phase 4** | **Emojis Mode** & Keyword Search | ✅ |
-| **Phase 5** | **Files Mode** & Live Previews | ✅ |
-| **Phase 6** | **Clipboard Mode** & Wayland/X11 | ✅ |
-| **Phase 7** | Themes & Advanced Configuration | 🏗️ |
+For full configuration instructions, layout modes, and theming features, please consult the [Configuration Guide](https://github.com/Krishneshvar/latui/wiki/CONFIGURATION).
 
 ---
 

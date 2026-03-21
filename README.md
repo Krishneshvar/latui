@@ -1,6 +1,10 @@
 # LaTUI: The Ultra-Fast Multi-Mode Launcher
 
 <p align="center">
+  <img src="assets/latui.png" alt="LaTUI Logo" width="300" />
+</p>
+
+<p align="center">
   <b>A blazing-fast, modular, and extensible productivity hub built with Rust and Ratatui.</b>
 </p>
 
@@ -58,71 +62,13 @@ A fast, keyword-searchable emoji picker. Copy any of the 240+ embedded emojis to
 
 LaTUI follows a **loosely coupled Strategy Pattern** where the interaction between the UI and functionality is mediated by a common trait. This allows for massive extensibility and isolation of concerns.
 
-```mermaid
-graph TD
-    UI[Ratatui UI] --> Registry[Mode Registry]
-    Registry --> ModeTrait[Mode Trait Implementation]
-    
-    subgraph "Modes (Strategies)"
-      ModeTrait --> Apps[Apps Mode]
-      ModeTrait --> Files[Files Mode]
-      ModeTrait --> Run[Run Mode]
-      ModeTrait --> Clipboard[Clipboard Mode]
-      ModeTrait --> Emojis[Emojis Mode]
-    end
-
-    subgraph "Backends"
-      Apps & Files & Emojis --> Engine[Search Engine Trie + Fuzzy]
-      Apps & Run & Files --> SQL[(SQLite Tracking DB)]
-      Clipboard --> SysClip{System Clipboard}
-    end
-```
-
----
+For a deep dive into LaTUI's structure, performance considerations, and internal modules, please see our [Architecture Documentation](./ARCHITECTURE.md) (or refer to the project's GitHub Wiki).
 
 ## Configuration
 
-LaTUI looks for configuration in `~/.config/latui/config.toml`.
+LaTUI is thoroughly customizable via `~/.config/latui/config.toml`. You can configure colors, layouts, layout variants, modes, and keybindings.
 
-**Example Configuration:**
-```toml
-[general]
-default_mode = "apps"
-theme = "dark"
-max_results = 15
-
-[keybindings]
-switch_mode = "Tab"
-next_item = "Down"
-prev_item = "Up"
-execute = "Enter"
-cancel = "Esc"
-
-[modes.apps]
-desktop_dirs = [
-  "~/.local/share/applications",
-  "/usr/local/share/applications",
-  "/usr/share/applications"
-]
-include = []
-exclude = []
-skip_terminal_apps = false
-
-[modes.apps.icons]
-enabled = true
-theme = "Papirus-Dark"
-size = 24
-scale = 1
-prefer_svg = false
-render_mode = "thumbnail" # "thumbnail" (icon-derived) | "icon_name"
-fallback = "📦"
-include = []
-exclude = []
-
-[modes.files]
-base_path = "~/"
-show_previews = true
-```
+For full configuration instructions, layout modes, and theming features, please consult the [Configuration Guide](./CONFIGURATION.md) (or the relevant page on the GitHub Wiki).
 
 ---
 

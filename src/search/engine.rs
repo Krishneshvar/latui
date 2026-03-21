@@ -5,6 +5,10 @@ use crate::search::typo::TypoTolerance;
 use rayon::prelude::*;
 use nucleo_matcher::{Matcher, Config, Utf32Str, pattern::{Pattern, CaseMatching, Normalization}};
 
+/// Core parallel hybrid search engine.
+///
+/// Combines an exact prefix, token-based matching, and typo-tolerant
+/// Levenshtein fallback (via `nucleo-matcher`) to score items.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SearchEngine {
     tokenizer: Tokenizer,
@@ -25,6 +29,7 @@ impl SearchEngine {
         }
     }
 
+    /// Performs a scored search, discards the scores, and returns the top matching items.
     pub fn search(&self, query: &str, items: &[SearchableItem]) -> Vec<Item> {
         self.search_scored(query, items)
             .into_iter()

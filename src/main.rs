@@ -1,3 +1,8 @@
+//! LaTUI Binary Entry Point
+//!
+//! Initializes XDG directories, configures logging, registers core and custom
+//! modes, and launches the Ratatui event loop gracefully handling terminal states.
+
 use latui::app::state::AppState;
 use latui::config::keywords::KeywordMapper;
 use latui::config::loader::load_user_config_path;
